@@ -63,6 +63,10 @@ app.use((req, res, next) => {
   next();
 });
 
+// Health check per Render (non usa il DB)
+app.get('/healthz', (req, res) => res.status(200).send('ok'));
+
+
 // Routes
 app.use('/', storeRoutes);
 app.use('/', authRoutes);
