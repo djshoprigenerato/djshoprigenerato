@@ -1,3 +1,4 @@
+// server.js (DJSHOPRIGENERATO – FIX per Render)
 import express from 'express';
 import path from 'path';
 import dotenv from 'dotenv';
@@ -22,13 +23,13 @@ const PORT = process.env.PORT || 3000;
 app.set('views', path.join(__dirname, 'views'));
 app.set('view engine', 'ejs');
 
-// Layout semplice che INVIA la risposta
-app.response.render = function(view, options = {}, callback) {
+// Layout wrapper che *invia* la risposta (fix pagina bianca)
+app.response.render = function (view, options = {}, callback) {
   const res = this;
   const opts = options || {};
   const layout = opts.layout === false ? null : (opts.layout || 'layouts/main');
 
-  res.app.render(view, opts, function(err, html) {
+  res.app.render(view, opts, function (err, html) {
     if (err) return callback ? callback(err) : res.status(500).send('Render error');
 
     if (!layout) {
@@ -36,25 +37,10 @@ app.response.render = function(view, options = {}, callback) {
     }
 
     const layoutOpts = { ...opts, body: html };
-    res.app.render(layout, layoutOpts, function(err2, out) {
+    res.app.render(layout, layoutOpts, function (err2, out) {
       if (err2) return callback ? callback(err2) : res.status(500).send('Layout render error');
       return callback ? callback(null, out) : res.send(out);
     });
-  });
-};
-
-// Simple layout support
-const renderView = app.response.render;
-app.response.render = function(view, options = {}, callback) {
-  const self = this;
-  const opts = options || {};
-  const cb = callback || function(){};
-  self.app.render(view, opts, function(err, html) {
-    if (err) return cb(err);
-    const layout = opts.layout === false ? null : (opts.layout || 'layouts/main');
-    if (!layout) return self.send(html);
-    opts.body = html;
-    self.app.render(layout, opts, cb);
   });
 };
 
@@ -67,14 +53,16 @@ app.use(express.json());
 app.use(cookieParser());
 app.use(methodOverride('_method'));
 
-// Sessions (MemoryStore for demo; Render restarts may clear sessions)
-app.use(session({
-  secret: process.env.SESSION_SECRET || 'dev_secret',
-  resave: false,
-  saveUninitialized: false,
-}));
+// Session (ok per iniziare sul piano Free)
+app.use(
+  session({
+    secret: process.env.SESSION_SECRET || 'dev_secret',
+    resave: false,
+    saveUninitialized: false,
+  })
+);
 
-// Expose locals
+// Locals
 app.use((req, res, next) => {
   res.locals.session = req.session;
   res.locals.currentUser = req.session.user || null;
@@ -84,9 +72,8 @@ app.use((req, res, next) => {
   next();
 });
 
-// Health check per Render (non usa il DB)
+// Health check (non tocca il DB)
 app.get('/healthz', (req, res) => res.status(200).send('ok'));
-
 
 // Routes
 app.use('/', storeRoutes);
@@ -98,6 +85,7 @@ app.use((req, res) => {
   res.status(404).render('store/404', { title: 'Pagina non trovata' });
 });
 
-app.listen(PORT, () => {
-  console.log(`Listening on http://localhost:${PORT}`);
+// Render richiede ascolto su 0.0.0.0 e PORT
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Listening on :${PORT}`);
 });
