@@ -14,17 +14,17 @@
     "node": ">=18"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.45.4",
     "bcryptjs": "^2.4.3",
     "cookie-parser": "^1.4.6",
     "dotenv": "^16.4.5",
     "ejs": "^3.1.10",
     "express": "^4.19.2",
+    "express-ejs-layouts": "^2.5.1",
     "express-session": "^1.18.0",
     "method-override": "^3.0.0",
     "multer": "^1.4.5-lts.1",
     "pg": "^8.11.5",
-    "@supabase/supabase-js": "^2.45.4",
     "stripe": "^16.6.0"
-    "express-ejs-layouts": "^2.5.1"
   }
 }
