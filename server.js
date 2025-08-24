@@ -43,7 +43,6 @@ app.response.render = function(view, options = {}, callback) {
   });
 };
 
-
 // Simple layout support
 const renderView = app.response.render;
 app.response.render = function(view, options = {}, callback) {
