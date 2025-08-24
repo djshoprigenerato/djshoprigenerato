@@ -22,6 +22,28 @@ const PORT = process.env.PORT || 3000;
 app.set('views', path.join(__dirname, 'views'));
 app.set('view engine', 'ejs');
 
+// Layout semplice che INVIA la risposta
+app.response.render = function(view, options = {}, callback) {
+  const res = this;
+  const opts = options || {};
+  const layout = opts.layout === false ? null : (opts.layout || 'layouts/main');
+
+  res.app.render(view, opts, function(err, html) {
+    if (err) return callback ? callback(err) : res.status(500).send('Render error');
+
+    if (!layout) {
+      return callback ? callback(null, html) : res.send(html);
+    }
+
+    const layoutOpts = { ...opts, body: html };
+    res.app.render(layout, layoutOpts, function(err2, out) {
+      if (err2) return callback ? callback(err2) : res.status(500).send('Layout render error');
+      return callback ? callback(null, out) : res.send(out);
+    });
+  });
+};
+
+
 // Simple layout support
 const renderView = app.response.render;
 app.response.render = function(view, options = {}, callback) {
