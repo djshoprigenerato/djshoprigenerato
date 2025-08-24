@@ -1,4 +1,4 @@
-// server.js (DJSHOPRIGENERATO – FIX per Render)
+// server.js (DJSHOPRIGENERATO – FIX per Render + error handler)
 import express from 'express';
 import path from 'path';
 import dotenv from 'dotenv';
@@ -23,7 +23,7 @@ const PORT = process.env.PORT || 3000;
 app.set('views', path.join(__dirname, 'views'));
 app.set('view engine', 'ejs');
 
-// Layout wrapper che *invia* la risposta (fix pagina bianca)
+// Layout wrapper che *invia* la risposta
 app.response.render = function (view, options = {}, callback) {
   const res = this;
   const opts = options || {};
@@ -79,6 +79,16 @@ app.get('/healthz', (req, res) => res.status(200).send('ok'));
 app.use('/', storeRoutes);
 app.use('/', authRoutes);
 app.use('/admin', adminRoutes);
+
+// Global error handler (evita 502 e mostra 500)
+app.use((err, req, res, next) => {
+  console.error('Unhandled route error:', err);
+  try {
+    return res.status(500).render('store/500', { title: 'Errore interno', error: err.message || String(err) });
+  } catch {
+    return res.status(500).send('Errore interno');
+  }
+});
 
 // 404
 app.use((req, res) => {
