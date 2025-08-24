@@ -1,0 +1,56 @@
+<h1>Prodotti</h1>
+<div class="row">
+  <div class="col card">
+    <h3>Nuovo prodotto</h3>
+    <form method="post" action="/admin/products" enctype="multipart/form-data">
+      <label>Titolo</label><input name="title" required>
+      <label>Slug</label><input name="slug" required placeholder="es. pioneer-djm-450-rigenerato">
+      <label>Categoria</label>
+      <select name="category_id">
+        <option value="">— nessuna —</option>
+        <% cats.forEach(c => { %><option value="<%= c.id %>"><%= c.name %></option><% }) %>
+      </select>
+      <label>Prezzo (centesimi)</label><input type="number" name="price_cents" required placeholder="es. 59900">
+      <label>Descrizione</label><textarea name="description"></textarea>
+      <label>Immagine</label><input type="file" name="image" accept="image/*">
+      <label>Video (URL YouTube)</label><input name="video_url" placeholder="https://www.youtube.com/watch?v=...">
+      <label>Attivo <input type="checkbox" name="is_active" checked></label>
+      <button class="btn" type="submit">Crea</button>
+    </form>
+  </div>
+  <div class="col card">
+    <h3>Esistenti</h3>
+    <table>
+      <thead><tr><th>Titolo</th><th>Prezzo</th><th>Categoria</th><th>Attivo</th><th>Azioni</th></tr></thead>
+      <tbody>
+        <% prods.forEach(p => { %>
+          <tr>
+            <td><%= p.title %></td>
+            <td>€ <%= (p.price_cents/100).toFixed(2) %></td>
+            <td><%= p.category_name || '—' %></td>
+            <td><%= p.is_active ? 'Si' : 'No' %></td>
+            <td>
+              <form method="post" action="/admin/products/<%= p.id %>" enctype="multipart/form-data" style="display:flex;flex-wrap:wrap;gap:8px;">
+                <input type="text" name="title" value="<%= p.title %>" required style="width:140px;">
+                <input type="text" name="slug" value="<%= p.slug %>" required style="width:140px;">
+                <select name="category_id">
+                  <option value="">— nessuna —</option>
+                  <% cats.forEach(c => { %><option value="<%= c.id %>" <%= p.category_id===c.id ? 'selected' : '' %>><%= c.name %></option><% }) %>
+                </select>
+                <input type="number" name="price_cents" value="<%= p.price_cents %>" required style="width:120px;">
+                <input type="text" name="video_url" value="<%= p.video_url %>" style="width:200px;">
+                <input type="file" name="image" accept="image/*">
+                <label>Attivo <input type="checkbox" name="is_active" <%= p.is_active ? 'checked' : '' %>></label>
+                <textarea name="description" style="width:100%;"><%= p.description %></textarea>
+                <button class="btn secondary" type="submit">Aggiorna</button>
+              </form>
+              <form method="post" action="/admin/products/<%= p.id %>/delete" style="display:inline;">
+                <button class="btn danger" onclick="return confirm('Eliminare il prodotto?')" type="submit">Elimina</button>
+              </form>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+</div>

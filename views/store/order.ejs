@@ -1,0 +1,16 @@
+<h1>Ordine #<%= order.id %></h1>
+<p>Stato: <strong><%= order.status %></strong> — Email: <%= order.email %></p>
+<table>
+  <thead><tr><th>Articolo</th><th>Prezzo</th><th>Q.tà</th><th>Subtotale</th></tr></thead>
+  <tbody>
+    <% items.forEach(i => { %>
+      <tr>
+        <td><%= i.title %></td>
+        <td>€ <%= (i.unit_price_cents/100).toFixed(2) %></td>
+        <td><%= i.quantity %></td>
+        <td>€ <%= ((i.unit_price_cents*i.quantity)/100).toFixed(2) %></td>
+      </tr>
+    <% }) %>
+  </tbody>
+</table>
+<p style="text-align:right; font-weight:700;">Totale: € <%= (order.total_cents/100).toFixed(2) %> — <span class="ship-badge">Spedizione gratuita</span></p>

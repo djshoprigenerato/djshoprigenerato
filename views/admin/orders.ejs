@@ -1,0 +1,15 @@
+<h1>Ordini</h1>
+<table>
+  <thead><tr><th>ID</th><th>Email</th><th>Totale</th><th>Stato</th><th>Creato</th></tr></thead>
+  <tbody>
+    <% orders.forEach(o => { %>
+      <tr>
+        <td><a href="/order/<%= o.id %>">#<%= o.id %></a></td>
+        <td><%= o.email %></td>
+        <td>€ <%= (o.total_cents/100).toFixed(2) %></td>
+        <td><%= o.status %></td>
+        <td><%= o.created_at %></td>
+      </tr>
+    <% }) %>
+  </tbody>
+</table>
