@@ -1,9 +1,10 @@
+// routes/admin.js — CRUD prodotti/categorie + ordini + galleria con watermark
 import express from 'express';
 import multer from 'multer';
 import { query } from '../lib/db.js';
 import { buildOrderPdfBuffer } from '../lib/pdf.js';
 import { sendMail, tplShipment } from '../lib/mailer.js';
-import { uploadBufferToStorage } from '../lib/storage.js';
+import { uploadBufferToStorage, uploadFromUrlToStorage } from '../lib/storage.js';
 
 const router = express.Router();
 const upload = multer(); // files in-memory
@@ -64,7 +65,7 @@ router.get('/products/new', ensureAdmin, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// Crea prodotto (file singolo 'image' e multipli 'images')
+// Crea prodotto (copertina + galleria; watermark anche da URL)
 router.post('/products', ensureAdmin, upload.fields([{name:'image',maxCount:1},{name:'images',maxCount:20}]), async (req, res, next) => {
   try {
     const { title, category_id, price, description, is_active, image_url, cover_url, image_urls } = req.body;
@@ -73,10 +74,18 @@ router.post('/products', ensureAdmin, upload.fields([{name:'image',maxCount:1},{
       return res.redirect('/admin/products/new');
     }
 
-    let cover = image_url || cover_url || null;
-    // upload immagine singola "image" -> può diventare cover
+    // COPERTINA
+    let cover = null;
     if (req.files?.image?.[0]?.buffer) {
-      cover = await uploadBufferToStorage(req.files.image[0].buffer, req.files.image[0].originalname, req.files.image[0].mimetype);
+      cover = await uploadBufferToStorage(
+        req.files.image[0].buffer,
+        req.files.image[0].originalname,
+        req.files.image[0].mimetype
+      );
+    }
+    if (!cover && (image_url || cover_url)) {
+      const url = image_url || cover_url;
+      try { cover = await uploadFromUrlToStorage(url); } catch {}
     }
 
     const slug = slugify(title);
@@ -87,11 +96,14 @@ router.post('/products', ensureAdmin, upload.fields([{name:'image',maxCount:1},{
     );
     const productId = ins.rows[0].id;
 
-    // gestisci URL multipli (uno per riga)
-    const urlLines = (image_urls || '')
-      .split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+    // GALLERIA: URL incollati (uno per riga)
+    const urlLines = (image_urls || '').split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+    const fromUrls = [];
+    for (const u of urlLines) {
+      try { fromUrls.push(await uploadFromUrlToStorage(u)); } catch {}
+    }
 
-    // upload immagini multiple "images"
+    // GALLERIA: file multipli
     const uploaded = [];
     if (req.files?.images?.length) {
       for (const f of req.files.images) {
@@ -100,15 +112,12 @@ router.post('/products', ensureAdmin, upload.fields([{name:'image',maxCount:1},{
       }
     }
 
-    const allUrls = [...urlLines, ...uploaded];
+    const allUrls = [...fromUrls, ...uploaded];
     for (let i=0;i<allUrls.length;i++) {
-      await query(
-        'insert into product_images(product_id,url,sort_order) values($1,$2,$3)',
-        [productId, allUrls[i], i]
-      );
+      await query('insert into product_images(product_id,url,sort_order) values($1,$2,$3)', [productId, allUrls[i], i]);
     }
 
-    // se non avevamo cover, prendi la prima immagine
+    // Se non avevi messo la cover, usa la prima galleria
     if (!cover && allUrls[0]) {
       await query('update products set image=$1 where id=$2', [allUrls[0], productId]);
     }
@@ -118,7 +127,7 @@ router.post('/products', ensureAdmin, upload.fields([{name:'image',maxCount:1},{
   } catch (e) { next(e); }
 });
 
-// Edit prodotto (form)
+// Modifica (form)
 router.get('/products/:id/edit', ensureAdmin, async (req, res, next) => {
   try {
     const p = (await query('select * from products where id=$1', [req.params.id])).rows[0];
@@ -129,17 +138,29 @@ router.get('/products/:id/edit', ensureAdmin, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// Update prodotto + aggiunta nuove immagini
+// Update (copertina + append galleria)
 router.post('/products/:id', ensureAdmin, upload.fields([{name:'image',maxCount:1},{name:'images',maxCount:20}]), async (req, res, next) => {
   try {
     const { title, category_id, price, description, is_active, image_url, cover_url, image_urls } = req.body;
     const p = (await query('select * from products where id=$1', [req.params.id])).rows[0];
     if (!p) return res.status(404).render('store/404', { title:'Prodotto non trovato' });
 
-    // determina cover
-    let cover = cover_url || image_url || p.image;
+    // COPERTINA
+    let cover = p.image;
     if (req.files?.image?.[0]?.buffer) {
-      cover = await uploadBufferToStorage(req.files.image[0].buffer, req.files.image[0].originalname, req.files.image[0].mimetype);
+      cover = await uploadBufferToStorage(
+        req.files.image[0].buffer,
+        req.files.image[0].originalname,
+        req.files.image[0].mimetype
+      );
+    } else if (image_url) {
+      try { cover = await uploadFromUrlToStorage(image_url); } catch {}
+    } else if (cover_url) {
+      if (/^https?:\/\//i.test(cover_url)) {
+        try { cover = await uploadFromUrlToStorage(cover_url); } catch {}
+      } else {
+        cover = cover_url;
+      }
     }
 
     const slug = slugify(title || p.title);
@@ -150,18 +171,21 @@ router.post('/products/:id', ensureAdmin, upload.fields([{name:'image',maxCount:
       [title || p.title, slug, category_id || p.category_id, toCents(price ?? p.price_cents/100), description ?? p.description, cover, Boolean(is_active), req.params.id]
     );
 
-    // nuove immagini (URL+upload)
+    // GALLERIA (append)
     const urlLines = (image_urls || '').split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+    const fromUrls = [];
+    for (const u of urlLines) {
+      try { fromUrls.push(await uploadFromUrlToStorage(u)); } catch {}
+    }
     const uploaded = [];
     if (req.files?.images?.length) {
       for (const f of req.files.images) {
-        const url = await uploadBufferToStorage(f.buffer, f.originalname, f.mimetype);
-        uploaded.push(url);
+        uploaded.push(await uploadBufferToStorage(f.buffer, f.originalname, f.mimetype));
       }
     }
     const currentMax = (await query('select coalesce(max(sort_order),-1) as m from product_images where product_id=$1', [req.params.id])).rows[0].m;
     let start = (currentMax ?? -1) + 1;
-    for (const u of [...urlLines, ...uploaded]) {
+    for (const u of [...fromUrls, ...uploaded]) {
       await query('insert into product_images(product_id,url,sort_order) values($1,$2,$3)', [req.params.id, u, start++]);
     }
 
@@ -170,7 +194,7 @@ router.post('/products/:id', ensureAdmin, upload.fields([{name:'image',maxCount:
   } catch (e) { next(e); }
 });
 
-// Delete prodotto (hard se possibile, altrimenti disattiva)
+// Elimina prodotto (hard se possibile, altrimenti disattiva)
 router.post('/products/:id/delete', ensureAdmin, async (req, res, next) => {
   try {
     try {
