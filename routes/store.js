@@ -1,3 +1,4 @@
+// routes/store.js — shop + checkout Stripe (spedizione gratuita + address)
 import express from 'express';
 import Stripe from 'stripe';
 import { query } from '../lib/db.js';
@@ -5,19 +6,19 @@ import { query } from '../lib/db.js';
 const router = express.Router();
 const stripeSecret = process.env.STRIPE_SECRET_KEY || null;
 const stripe = stripeSecret ? new Stripe(stripeSecret) : null;
-const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
+const BASE_URL = process.env.BASE_URL || 'https://www.djshoprigenerato.eu';
 
-// helper per catturare gli errori async e passarli al global error handler
 const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
-
 function ensureCart(req) { if (!req.session.cart) req.session.cart = []; }
 
+// Home
 router.get('/', asyncHandler(async (req, res) => {
   const cats = (await query('select * from categories order by name')).rows;
   const prods = (await query('select * from products where is_active=true order by created_at desc limit 12')).rows;
   res.render('store/home', { title: 'Home', cats, prods });
 }));
 
+// Categoria
 router.get('/category/:slug', asyncHandler(async (req, res) => {
   const r = await query('select * from categories where slug=$1', [req.params.slug]);
   const cat = r.rows[0];
@@ -26,15 +27,19 @@ router.get('/category/:slug', asyncHandler(async (req, res) => {
   res.render('store/category', { title: cat.name, cat, prods });
 }));
 
+// Prodotto
 router.get('/product/:slug', asyncHandler(async (req, res) => {
-  const r = await query(`select p.*, c.name as category_name, c.slug as category_slug
-                         from products p left join categories c on p.category_id=c.id where p.slug=$1`, [req.params.slug]);
+  const r = await query(`
+    select p.*, c.name as category_name, c.slug as category_slug
+    from products p left join categories c on p.category_id=c.id
+    where p.slug=$1
+  `, [req.params.slug]);
   const p = r.rows[0];
   if (!p) return res.status(404).render('store/404', { title: 'Prodotto non trovato' });
   res.render('store/product', { title: p.title, p });
 }));
 
-// CART
+// Carrello
 router.post('/cart/add', asyncHandler(async (req, res) => {
   ensureCart(req);
   const { product_id, quantity } = req.body;
@@ -68,27 +73,36 @@ router.post('/cart/update', (req, res) => {
   res.redirect('/cart');
 });
 
-// CHECKOUT
+// Checkout - pagina
 router.get('/checkout', (req, res) => {
   ensureCart(req);
   if (!req.session.cart.length) return res.redirect('/cart');
   res.render('store/checkout', { title:'Checkout', publishableKey: process.env.STRIPE_PUBLISHABLE_KEY || null });
 });
 
+// Checkout - creazione sessione Stripe
 router.post('/checkout', asyncHandler(async (req, res) => {
   ensureCart(req);
   const { email } = req.body;
   if (!req.session.cart.length) return res.redirect('/cart');
+
   const total = req.session.cart.reduce((s,i)=> s + i.price_cents*i.quantity, 0);
 
-  const ins = await query('insert into orders(user_id,email,total_cents,status) values($1,$2,$3,$4) returning id',
-                          [req.session.user?.id || null, email, total, 'pending']);
+  // crea ordine "pending"
+  const ins = await query(
+    'insert into orders(user_id,email,total_cents,status) values($1,$2,$3,$4) returning id',
+    [req.session.user?.id || null, email, total, 'pending']
+  );
   const orderId = ins.rows[0].id;
+
   for (const it of req.session.cart) {
-    await query('insert into order_items(order_id,product_id,title,unit_price_cents,quantity) values($1,$2,$3,$4,$5)',
-                [orderId, it.product_id, it.title, it.price_cents, it.quantity]);
+    await query(
+      'insert into order_items(order_id,product_id,title,unit_price_cents,quantity) values($1,$2,$3,$4,$5)',
+      [orderId, it.product_id, it.title, it.price_cents, it.quantity]
+    );
   }
 
+  // Se Stripe non è configurato, completa in "demo" (non dovrebbe capitare in live)
   if (!stripe) {
     await query('update orders set status=$1 where id=$2', ['paid', orderId]);
     req.session.cart = [];
@@ -97,37 +111,33 @@ router.post('/checkout', asyncHandler(async (req, res) => {
   }
 
   const session = await stripe.checkout.sessions.create({
-  mode: 'payment',
-  payment_method_types: ['card', 'link'], // Apple Pay/Google Pay arrivano automaticamente
-  customer_email: email,
-  line_items: req.session.cart.map(i => ({
-    price_data: {
-      currency: 'eur',
-      product_data: { name: i.title },
-      unit_amount: i.price_cents
-    },
-    quantity: i.quantity
-  })),
-  // Indirizzo di spedizione (Italia; aggiungi altri paesi se vuoi)
-  shipping_address_collection: { allowed_countries: ['IT'] },
-  // Spedizione gratuita
-  shipping_options: [{
-    shipping_rate_data: {
-      type: 'fixed_amount',
-      fixed_amount: { amount: 0, currency: 'eur' },
-      display_name: 'Spedizione gratuita (SDA & GLS)',
-      delivery_estimate: {
-        minimum: { unit: 'business_day', value: 2 },
-        maximum: { unit: 'business_day', value: 5 }
+    mode: 'payment',
+    payment_method_types: ['card', 'link'], // Apple Pay/Google Pay arrivano automaticamente
+    customer_email: email,
+    line_items: req.session.cart.map(i => ({
+      price_data: {
+        currency: 'eur',
+        product_data: { name: i.title },
+        unit_amount: i.price_cents
+      },
+      quantity: i.quantity
+    })),
+    // Spedizione: gratuita (SDA & GLS) + indirizzo IT
+    shipping_address_collection: { allowed_countries: ['IT'] },
+    shipping_options: [{
+      shipping_rate_data: {
+        type: 'fixed_amount',
+        fixed_amount: { amount: 0, currency: 'eur' },
+        display_name: 'Spedizione gratuita (SDA & GLS)',
+        delivery_estimate: {
+          minimum: { unit: 'business_day', value: 2 },
+          maximum: { unit: 'business_day', value: 5 }
+        }
       }
-    }
-  }],
-  success_url: `${BASE_URL}/checkout/success?session_id={CHECKOUT_SESSION_ID}&oid=${orderId}`,
-  cancel_url: `${BASE_URL}/checkout/cancel?oid=${orderId}`,
-  // opzionale: branding extra
-  invoice_creation: { enabled: false },
-  allow_promotion_codes: false
-});
+    }],
+    success_url: `${BASE_URL}/checkout/success?session_id={CHECKOUT_SESSION_ID}&oid=${orderId}`,
+    cancel_url: `${BASE_URL}/checkout/cancel?oid=${orderId}`
+  });
 
   await query('update orders set stripe_session_id=$1 where id=$2', [session.id, orderId]);
   res.redirect(303, session.url);
@@ -139,7 +149,7 @@ router.get('/checkout/success', asyncHandler(async (req, res) => {
     await query('update orders set status=$1 where id=$2', ['paid', oid]);
     req.session.cart = [];
   }
-  res.render('store/success', { title: 'Grazie per l ordine', orderId: oid });
+  res.render('store/success', { title: 'Grazie per l\'ordine', orderId: oid });
 }));
 
 router.get('/checkout/cancel', (req, res) => {
@@ -154,7 +164,7 @@ router.get('/order/:id', asyncHandler(async (req, res) => {
   res.render('store/order', { title:'Dettaglio ordine', order, items });
 }));
 
-// Static pages
+// Pagine statiche
 router.get('/about', (req, res) => res.render('store/about', { title: 'Chi siamo' }));
 router.get('/refurb', (req, res) => res.render('store/refurb', { title: 'Processo Rigenerazione' }));
 router.get('/warranty', (req, res) => res.render('store/warranty', { title: 'Garanzia' }));
