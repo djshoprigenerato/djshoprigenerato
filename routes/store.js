@@ -27,16 +27,24 @@ router.get('/category/:slug', asyncHandler(async (req, res) => {
   res.render('store/category', { title: cat.name, cat, prods });
 }));
 
-// Prodotto
+// Prodotto (con galleria immagini)
 router.get('/product/:slug', asyncHandler(async (req, res) => {
   const r = await query(`
     select p.*, c.name as category_name, c.slug as category_slug
-    from products p left join categories c on p.category_id=c.id
+    from products p
+    left join categories c on p.category_id=c.id
     where p.slug=$1
   `, [req.params.slug]);
   const p = r.rows[0];
   if (!p) return res.status(404).render('store/404', { title: 'Prodotto non trovato' });
-  res.render('store/product', { title: p.title, p });
+
+  // Galleria immagini
+  const images = (await query(
+    'select id, url from product_images where product_id=$1 order by sort_order, id',
+    [p.id]
+  )).rows;
+
+  res.render('store/product', { title: p.title, p, images });
 }));
 
 // Carrello
@@ -112,7 +120,7 @@ router.post('/checkout', asyncHandler(async (req, res) => {
 
   const session = await stripe.checkout.sessions.create({
     mode: 'payment',
-    payment_method_types: ['card', 'link'], // Apple Pay/Google Pay arrivano automaticamente
+    payment_method_types: ['card', 'link'],
     customer_email: email,
     line_items: req.session.cart.map(i => ({
       price_data: {
