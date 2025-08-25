@@ -1,6 +1,7 @@
-// routes/admin.js — CRUD prodotti/categorie + galleria + ordini + watermark + cleanup Storage
+// routes/admin.js — CRUD + galleria + ordini + refund Stripe + PDF con spedizione/telefono
 import express from 'express';
 import multer from 'multer';
+import Stripe from 'stripe';
 import { query } from '../lib/db.js';
 import { buildOrderPdfBuffer } from '../lib/pdf.js';
 import { sendMail, tplShipment } from '../lib/mailer.js';
@@ -12,7 +13,9 @@ import {
 } from '../lib/storage.js';
 
 const router = express.Router();
-const upload = multer(); // files in-memory
+const upload = multer();
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 function ensureAdmin(req, res, next) {
   if (req.session?.user?.is_admin) return next();
@@ -23,10 +26,8 @@ function ensureAdmin(req, res, next) {
 const slugify = (s) =>
   (s || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
-
 const toCents = (v) => Math.round(parseFloat(String(v || '0').replace(',', '.')) * 100);
 
-// genera slug unico dentro una tabella, escludendo opzionalmente un id
 async function ensureUniqueSlug(table, baseSlug, excludeId = null) {
   let base = (baseSlug && baseSlug.trim()) ? baseSlug : 'item';
   let slug = base;
@@ -79,7 +80,6 @@ router.get('/products', ensureAdmin, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// form nuovo
 router.get('/products/new', ensureAdmin, async (req, res, next) => {
   try {
     const cats = (await query('select id,name from categories order by name')).rows;
@@ -87,7 +87,6 @@ router.get('/products/new', ensureAdmin, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// crea
 router.post('/products', ensureAdmin, upload.fields([{name:'image',maxCount:1},{name:'images',maxCount:20}]), async (req, res, next) => {
   try {
     const { title, category_id, price, description, is_active, image_url, cover_url, image_urls } = req.body;
@@ -96,7 +95,6 @@ router.post('/products', ensureAdmin, upload.fields([{name:'image',maxCount:1},{
       return res.redirect('/admin/products/new');
     }
 
-    // copertina
     let cover = null;
     if (req.files?.image?.[0]?.buffer) {
       cover = await uploadBufferToStorage(
@@ -116,13 +114,11 @@ router.post('/products', ensureAdmin, upload.fields([{name:'image',maxCount:1},{
     );
     const productId = ins.rows[0].id;
 
-    // galleria: URL (uno per riga)
     const urlLines = (image_urls || '').split(/\r?\n/).map(s => s.trim()).filter(Boolean);
     const fromUrls = [];
     for (const u of urlLines) {
       try { fromUrls.push(await uploadFromUrlToStorage(u)); } catch {}
     }
-    // galleria: file multipli
     const uploaded = [];
     if (req.files?.images?.length) {
       for (const f of req.files.images) {
@@ -142,7 +138,6 @@ router.post('/products', ensureAdmin, upload.fields([{name:'image',maxCount:1},{
   } catch (e) { next(e); }
 });
 
-// form modifica
 router.get('/products/:id/edit', ensureAdmin, async (req, res, next) => {
   try {
     const p = (await query('select * from products where id=$1', [req.params.id])).rows[0];
@@ -153,14 +148,12 @@ router.get('/products/:id/edit', ensureAdmin, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// update (append galleria)
 router.post('/products/:id', ensureAdmin, upload.fields([{name:'image',maxCount:1},{name:'images',maxCount:20}]), async (req, res, next) => {
   try {
     const { title, category_id, price, description, is_active, image_url, cover_url, image_urls } = req.body;
     const p = (await query('select * from products where id=$1', [req.params.id])).rows[0];
     if (!p) return res.status(404).render('store/404', { title:'Prodotto non trovato' });
 
-    // copertina
     let cover = p.image;
     if (req.files?.image?.[0]?.buffer) {
       cover = await uploadBufferToStorage(
@@ -185,7 +178,6 @@ router.post('/products/:id', ensureAdmin, upload.fields([{name:'image',maxCount:
        description ?? p.description, cover, Boolean(is_active), req.params.id]
     );
 
-    // galleria append
     const urlLines = (image_urls || '').split(/\r?\n/).map(s => s.trim()).filter(Boolean);
     const fromUrls = [];
     for (const u of urlLines) {
@@ -208,12 +200,9 @@ router.post('/products/:id', ensureAdmin, upload.fields([{name:'image',maxCount:
   } catch (e) { next(e); }
 });
 
-// elimina prodotto (+ file) o disattiva se referenziato
 router.post('/products/:id/delete', ensureAdmin, async (req, res, next) => {
   try {
     const id = req.params.id;
-
-    // raccogli URL (cover + galleria)
     const coverRow = await query('select image from products where id=$1', [id]);
     const galleryRows = await query('select url from product_images where product_id=$1', [id]);
     const urls = [
@@ -235,7 +224,6 @@ router.post('/products/:id/delete', ensureAdmin, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// rimuovi immagine galleria (DB + Storage)
 router.post('/products/:id/images/:imgId/delete', ensureAdmin, async (req, res, next) => {
   try {
     const del = await query(
@@ -340,6 +328,17 @@ router.get('/orders/:id/pdf', ensureAdmin, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// aggiorna stato ordine
+router.post('/orders/:id/status', ensureAdmin, async (req, res, next) => {
+  try {
+    const { status } = req.body; // es: paid, refunded, cancelled, pending, shipped
+    await query('update orders set status=$1 where id=$2', [status, req.params.id]);
+    req.session.flash = { type: 'success', msg: 'Stato ordine aggiornato.' };
+    res.redirect('/admin/orders/' + req.params.id);
+  } catch (e) { next(e); }
+});
+
+// aggiorna spedizione (provider/tracking + email)
 router.post('/orders/:id/ship', ensureAdmin, async (req, res, next) => {
   try {
     const { provider, tracking } = req.body;
@@ -358,6 +357,41 @@ router.post('/orders/:id/ship', ensureAdmin, async (req, res, next) => {
     }
     req.session.flash = { type: 'success', msg: 'Ordine aggiornato e email inviata.' };
     res.redirect('/admin/orders/' + req.params.id);
+  } catch (e) { next(e); }
+});
+
+// refund Stripe totale/parziale
+router.post('/orders/:id/refund', ensureAdmin, async (req, res, next) => {
+  try {
+    const { amount } = req.body; // in euro (opzionale)
+    const o = (await query('select * from orders where id=$1', [req.params.id])).rows[0];
+    if (!o) { req.session.flash = { type:'error', msg:'Ordine non trovato.' }; return res.redirect('/admin/orders'); }
+
+    // payment intent id (adatta ai tuoi nomi colonna)
+    const pi = o.stripe_payment_intent_id || o.payment_intent_id || null;
+    if (!pi) { req.session.flash = { type:'error', msg:'PaymentIntent non disponibile per il rimborso.' }; return res.redirect('/admin/orders/'+o.id); }
+
+    const refunded = Number(o.refunded_cents || 0);
+    const maxRefund = Math.max(Number(o.total_cents || 0) - refunded, 0);
+    let cents = maxRefund;
+    if (amount) {
+      const reqCents = Math.round(parseFloat(String(amount).replace(',', '.')) * 100);
+      cents = Math.min(Math.max(reqCents, 0), maxRefund);
+    }
+    if (cents <= 0) {
+      req.session.flash = { type:'error', msg:'Importo rimborso non valido o già rimborsato.' };
+      return res.redirect('/admin/orders/'+o.id);
+    }
+
+    await stripe.refunds.create({ payment_intent: pi, amount: cents });
+
+    await query(
+      'update orders set refunded_cents=coalesce(refunded_cents,0)+$1, refunded_at=now(), status=$2 where id=$3',
+      [cents, (refunded + cents >= (o.total_cents || 0)) ? 'refunded' : o.status, o.id]
+    );
+
+    req.session.flash = { type:'success', msg:`Rimborso di € ${(cents/100).toFixed(2)} creato.` };
+    res.redirect('/admin/orders/' + o.id);
   } catch (e) { next(e); }
 });
 
