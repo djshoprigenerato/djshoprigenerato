@@ -34,7 +34,13 @@ app.use((req, res, next) => {
 });
 
 // ====== Stripe Webhook (PRIMA dei body parsers, raw body!) ======
+import Stripe from 'stripe';
+import { query } from './lib/db.js';
+import { sendMail, tplOrderConfirmation } from './lib/mailer.js';
+import { buildOrderPdfBuffer } from './lib/pdf.js';
+
 const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
+
 if (stripe) {
   app.post('/webhooks/stripe', express.raw({ type: 'application/json' }), async (req, res) => {
     const sig = req.headers['stripe-signature'];
@@ -47,8 +53,30 @@ if (stripe) {
 
       if (event.type === 'checkout.session.completed') {
         const session = event.data.object;
-        // marca come pagato l'ordine collegato alla sessione
-        await query('update orders set status=$1 where stripe_session_id=$2', ['paid', session.id]);
+
+        // Aggiorna a 'paid' SOLO se non è già paid (evita doppie email)
+        const upd = await query(
+          'update orders set status=$1 where stripe_session_id=$2 and status<>$1 returning id,email,total_cents',
+          ['paid', session.id]
+        );
+
+        if (upd.rowCount) {
+          const orderId = upd.rows[0].id;
+          const email = upd.rows[0].email;
+          const totalEUR = (upd.rows[0].total_cents || 0) / 100;
+
+          const items = (await query('select * from order_items where order_id=$1', [orderId])).rows;
+          const orderRow = (await query('select * from orders where id=$1', [orderId])).rows[0];
+          const pdf = await buildOrderPdfBuffer(orderRow, items);
+
+          const { subject, html } = tplOrderConfirmation({ orderId, totalEUR });
+          await sendMail({
+            to: email,
+            subject,
+            html,
+            attachments: [{ filename: `ordine-${orderId}.pdf`, content: pdf }]
+          });
+        }
       }
 
       return res.json({ received: true });
@@ -58,6 +86,7 @@ if (stripe) {
     }
   });
 }
+
 
 // ====== Static & middlewares ======
 app.use('/public', express.static(path.join(__dirname, 'public')));
