@@ -1,37 +1,28 @@
-<h1>Categorie</h1>
-<div class="row">
-  <div class="col card">
-    <h3>Nuova categoria</h3>
-    <form method="post" action="/admin/categories">
-      <label>Nome</label><input name="name" required>
-      <label>Slug</label><input name="slug" required placeholder="es. mixer">
-      <label>Descrizione</label><textarea name="description"></textarea>
-      <button class="btn" type="submit">Crea</button>
-    </form>
-  </div>
-  <div class="col card">
-    <h3>Esistenti</h3>
-    <table>
-      <thead><tr><th>Nome</th><th>Slug</th><th>Azioni</th></tr></thead>
-      <tbody>
-        <% cats.forEach(c => { %>
-          <tr>
-            <td><%= c.name %></td>
-            <td><%= c.slug %></td>
-            <td>
-              <form method="post" action="/admin/categories/<%= c.id %>" style="display:inline;">
-                <input type="text" name="name" value="<%= c.name %>" required style="width:140px;">
-                <input type="text" name="slug" value="<%= c.slug %>" required style="width:120px;">
-                <input type="text" name="description" value="<%= c.description %>" style="width:200px;">
-                <button class="btn secondary" type="submit">Aggiorna</button>
-              </form>
-              <form method="post" action="/admin/categories/<%= c.id %>/delete" style="display:inline;">
-                <button class="btn danger" onclick="return confirm('Eliminare la categoria?')" type="submit">Elimina</button>
-              </form>
-            </td>
-          </tr>
-        <% }) %>
-      </tbody>
-    </table>
-  </div>
-</div>
+<h1 class="page-title">Categorie</h1>
+
+<form method="post" action="/admin/categories" style="display:grid;gap:8px;max-width:520px;margin-bottom:16px">
+  <label>Nome categoria</label>
+  <input type="text" name="name" placeholder="Es. Mixer, Cuffie, Giradischi" required>
+  <label>Descrizione (opzionale)</label>
+  <textarea name="description" rows="3" placeholder="Descrizione breve…"></textarea>
+  <button class="btn">Salva categoria</button>
+</form>
+
+<table class="table">
+  <thead>
+    <tr><th>ID</th><th>Nome</th><th>Slug</th><th>Descrizione</th></tr>
+  </thead>
+  <tbody>
+    <% (cats||[]).forEach(function(c){ %>
+      <tr>
+        <td><%= c.id %></td>
+        <td><%= c.name %></td>
+        <td><%= c.slug %></td>
+        <td><%= c.description || '' %></td>
+      </tr>
+    <% }) %>
+    <% if(!(cats||[]).length){ %>
+      <tr><td colspan="4">Ancora nessuna categoria.</td></tr>
+    <% } %>
+  </tbody>
+</table>
