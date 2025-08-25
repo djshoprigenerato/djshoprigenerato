@@ -6,7 +6,7 @@ import { sendMail, tplShipment } from '../lib/mailer.js';
 import { uploadBufferToStorage } from '../lib/storage.js';
 
 const router = express.Router();
-const upload = multer(); // in memoria
+const upload = multer(); // files in-memory
 
 function ensureAdmin(req, res, next) {
   if (req.session?.user?.is_admin) return next();
@@ -15,13 +15,8 @@ function ensureAdmin(req, res, next) {
 }
 
 const slugify = (s) =>
-  (s || '')
-    .toString()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/(^-|-$)+/g, '');
+  (s || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
 
 const toCents = (v) => Math.round(parseFloat(String(v || '0').replace(',', '.')) * 100);
 
@@ -69,30 +64,56 @@ router.get('/products/new', ensureAdmin, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// Crea prodotto
-router.post('/products', ensureAdmin, upload.single('image'), async (req, res, next) => {
+// Crea prodotto (file singolo 'image' e multipli 'images')
+router.post('/products', ensureAdmin, upload.fields([{name:'image',maxCount:1},{name:'images',maxCount:20}]), async (req, res, next) => {
   try {
-    const { title, category_id, price, description, is_active, image_url } = req.body;
+    const { title, category_id, price, description, is_active, image_url, cover_url, image_urls } = req.body;
     if (!title || !category_id) {
       req.session.flash = { type:'error', msg:'Titolo e categoria sono obbligatori.' };
       return res.redirect('/admin/products/new');
     }
-    let image = image_url || null;
-    if (req.file && req.file.buffer?.length) {
-      image = await uploadBufferToStorage(req.file.buffer, req.file.originalname, req.file.mimetype);
+
+    let cover = image_url || cover_url || null;
+    // upload immagine singola "image" -> può diventare cover
+    if (req.files?.image?.[0]?.buffer) {
+      cover = await uploadBufferToStorage(req.files.image[0].buffer, req.files.image[0].originalname, req.files.image[0].mimetype);
     }
+
     const slug = slugify(title);
-    await query(
+    const ins = await query(
       `insert into products (title, slug, category_id, price_cents, description, image, is_active)
-       values ($1,$2,$3,$4,$5,$6,$7)
-       on conflict (slug) do update set
-         title=excluded.title, category_id=excluded.category_id,
-         price_cents=excluded.price_cents, description=excluded.description,
-         image=coalesce(excluded.image, products.image),
-         is_active=excluded.is_active`,
-      [title, slug, category_id, toCents(price), description || null, image, Boolean(is_active)]
+       values ($1,$2,$3,$4,$5,$6,$7) returning id`,
+      [title, slug, category_id, toCents(price), description || null, cover, Boolean(is_active)]
     );
-    req.session.flash = { type:'success', msg:'Prodotto salvato.' };
+    const productId = ins.rows[0].id;
+
+    // gestisci URL multipli (uno per riga)
+    const urlLines = (image_urls || '')
+      .split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+
+    // upload immagini multiple "images"
+    const uploaded = [];
+    if (req.files?.images?.length) {
+      for (const f of req.files.images) {
+        const url = await uploadBufferToStorage(f.buffer, f.originalname, f.mimetype);
+        uploaded.push(url);
+      }
+    }
+
+    const allUrls = [...urlLines, ...uploaded];
+    for (let i=0;i<allUrls.length;i++) {
+      await query(
+        'insert into product_images(product_id,url,sort_order) values($1,$2,$3)',
+        [productId, allUrls[i], i]
+      );
+    }
+
+    // se non avevamo cover, prendi la prima immagine
+    if (!cover && allUrls[0]) {
+      await query('update products set image=$1 where id=$2', [allUrls[0], productId]);
+    }
+
+    req.session.flash = { type:'success', msg:'Prodotto creato.' };
     res.redirect('/admin/products');
   } catch (e) { next(e); }
 });
@@ -103,34 +124,53 @@ router.get('/products/:id/edit', ensureAdmin, async (req, res, next) => {
     const p = (await query('select * from products where id=$1', [req.params.id])).rows[0];
     if (!p) return res.status(404).render('store/404', { title:'Prodotto non trovato' });
     const cats = (await query('select id,name from categories order by name')).rows;
-    res.render('admin/products_edit', { title: 'Modifica prodotto', p, cats });
+    const images = (await query('select * from product_images where product_id=$1 order by sort_order,id', [p.id])).rows;
+    res.render('admin/products_edit', { title: 'Modifica prodotto', p, cats, images });
   } catch (e) { next(e); }
 });
 
-// Update prodotto
-router.post('/products/:id', ensureAdmin, upload.single('image'), async (req, res, next) => {
+// Update prodotto + aggiunta nuove immagini
+router.post('/products/:id', ensureAdmin, upload.fields([{name:'image',maxCount:1},{name:'images',maxCount:20}]), async (req, res, next) => {
   try {
-    const { title, category_id, price, description, is_active, image_url } = req.body;
+    const { title, category_id, price, description, is_active, image_url, cover_url, image_urls } = req.body;
     const p = (await query('select * from products where id=$1', [req.params.id])).rows[0];
     if (!p) return res.status(404).render('store/404', { title:'Prodotto non trovato' });
 
-    let image = image_url || p.image;
-    if (req.file && req.file.buffer?.length) {
-      image = await uploadBufferToStorage(req.file.buffer, req.file.originalname, req.file.mimetype);
+    // determina cover
+    let cover = cover_url || image_url || p.image;
+    if (req.files?.image?.[0]?.buffer) {
+      cover = await uploadBufferToStorage(req.files.image[0].buffer, req.files.image[0].originalname, req.files.image[0].mimetype);
     }
+
     const slug = slugify(title || p.title);
     await query(
       `update products set
          title=$1, slug=$2, category_id=$3, price_cents=$4, description=$5, image=$6, is_active=$7
        where id=$8`,
-      [title || p.title, slug, category_id || p.category_id, toCents(price ?? p.price_cents/100), description ?? p.description, image, Boolean(is_active), req.params.id]
+      [title || p.title, slug, category_id || p.category_id, toCents(price ?? p.price_cents/100), description ?? p.description, cover, Boolean(is_active), req.params.id]
     );
+
+    // nuove immagini (URL+upload)
+    const urlLines = (image_urls || '').split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+    const uploaded = [];
+    if (req.files?.images?.length) {
+      for (const f of req.files.images) {
+        const url = await uploadBufferToStorage(f.buffer, f.originalname, f.mimetype);
+        uploaded.push(url);
+      }
+    }
+    const currentMax = (await query('select coalesce(max(sort_order),-1) as m from product_images where product_id=$1', [req.params.id])).rows[0].m;
+    let start = (currentMax ?? -1) + 1;
+    for (const u of [...urlLines, ...uploaded]) {
+      await query('insert into product_images(product_id,url,sort_order) values($1,$2,$3)', [req.params.id, u, start++]);
+    }
+
     req.session.flash = { type:'success', msg:'Prodotto aggiornato.' };
     res.redirect('/admin/products');
   } catch (e) { next(e); }
 });
 
-// Delete prodotto
+// Delete prodotto (hard se possibile, altrimenti disattiva)
 router.post('/products/:id/delete', ensureAdmin, async (req, res, next) => {
   try {
     try {
@@ -138,9 +178,18 @@ router.post('/products/:id/delete', ensureAdmin, async (req, res, next) => {
       req.session.flash = { type:'success', msg:'Prodotto eliminato.' };
     } catch {
       await query('update products set is_active=false where id=$1', [req.params.id]);
-      req.session.flash = { type:'success', msg:'Prodotto disattivato (non eliminabile perché usato in ordini).' };
+      req.session.flash = { type:'success', msg:'Prodotto disattivato (presente in ordini).' };
     }
     res.redirect('/admin/products');
+  } catch (e) { next(e); }
+});
+
+// Rimuovi una immagine dalla galleria
+router.post('/products/:id/images/:imgId/delete', ensureAdmin, async (req, res, next) => {
+  try {
+    await query('delete from product_images where id=$1 and product_id=$2', [req.params.imgId, req.params.id]);
+    req.session.flash = { type:'success', msg:'Immagine rimossa.' };
+    res.redirect('/admin/products/' + req.params.id + '/edit');
   } catch (e) { next(e); }
 });
 
