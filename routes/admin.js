@@ -11,6 +11,15 @@ function ensureAdmin(req, res, next) {
   return res.redirect('/login');
 }
 
+const slugify = (s) =>
+  (s || '')
+    .toString()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)+/g, '');
+
 // DASHBOARD
 router.get('/', ensureAdmin, async (req, res, next) => {
   try {
@@ -24,7 +33,7 @@ router.get('/', ensureAdmin, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// PRODOTTI (lista + ricerca/filtri)
+// ============== PRODOTTI ==============
 router.get('/products', ensureAdmin, async (req, res, next) => {
   try {
     const { q = '', category = '' } = req.query;
@@ -43,19 +52,45 @@ router.get('/products', ensureAdmin, async (req, res, next) => {
     sql += ' order by p.created_at desc limit 200';
 
     const products = (await query(sql, params)).rows;
-    res.render('admin/products_index', { title: 'Prodotti', products, cats, q, category });
+    res.render('admin/products', { title: 'Prodotti', products, cats, q, category });
   } catch (e) { next(e); }
 });
 
-// ORDINI — lista
+// ============== CATEGORIE ==============
+router.get('/categories', ensureAdmin, async (req, res, next) => {
+  try {
+    const cats = (await query('select * from categories order by name')).rows;
+    res.render('admin/categories', { title: 'Categorie', cats });
+  } catch (e) { next(e); }
+});
+
+router.post('/categories', ensureAdmin, async (req, res, next) => {
+  try {
+    const { name = '', description = '' } = req.body;
+    if (!name.trim()) {
+      req.session.flash = { type: 'error', msg: 'Nome categoria obbligatorio.' };
+      return res.redirect('/admin/categories');
+    }
+    const slug = slugify(name);
+    await query(
+      `insert into categories(name, slug, description)
+       values($1,$2,$3)
+       on conflict (slug) do update set name=excluded.name, description=excluded.description`,
+      [name.trim(), slug, description || null]
+    );
+    req.session.flash = { type: 'success', msg: 'Categoria salvata.' };
+    res.redirect('/admin/categories');
+  } catch (e) { next(e); }
+});
+
+// ============== ORDINI ==============
 router.get('/orders', ensureAdmin, async (req, res, next) => {
   try {
     const orders = (await query('select * from orders order by created_at desc limit 200')).rows;
-    res.render('admin/orders_index', { title: 'Ordini', orders });
+    res.render('admin/orders', { title: 'Ordini', orders });
   } catch (e) { next(e); }
 });
 
-// ORDINE — dettaglio
 router.get('/orders/:id', ensureAdmin, async (req, res, next) => {
   try {
     const order = (await query('select * from orders where id=$1', [req.params.id])).rows[0];
@@ -65,13 +100,11 @@ router.get('/orders/:id', ensureAdmin, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// ORDINE — PDF
 router.get('/orders/:id/pdf', ensureAdmin, async (req, res, next) => {
   try {
     const order = (await query('select * from orders where id=$1', [req.params.id])).rows[0];
     if (!order) return res.status(404).send('Ordine non trovato');
     const items = (await query('select * from order_items where order_id=$1', [order.id])).rows;
-
     const pdf = await buildOrderPdfBuffer(order, items);
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="ordine-${order.id}.pdf"`);
@@ -79,14 +112,20 @@ router.get('/orders/:id/pdf', ensureAdmin, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// ORDINE — marca SPEDITO + email cliente
 router.post('/orders/:id/ship', ensureAdmin, async (req, res, next) => {
   try {
     const { provider, tracking } = req.body;
-    const o = (await query('update orders set shipping_provider=$1, tracking_code=$2, shipped_at=now() where id=$3 returning *',
-      [provider || null, tracking || null, req.params.id])).rows[0];
-    if (o && o.email) {
-      const { subject, html } = tplShipment({ orderId: o.id, provider: o.shipping_provider || 'Corriere', tracking: o.tracking_code || '' });
+    const o = (await query(
+      'update orders set shipping_provider=$1, tracking_code=$2, shipped_at=now() where id=$3 returning *',
+      [provider || null, tracking || null, req.params.id]
+    )).rows[0];
+
+    if (o?.email) {
+      const { subject, html } = tplShipment({
+        orderId: o.id,
+        provider: o.shipping_provider || 'Corriere',
+        tracking: o.tracking_code || ''
+      });
       await sendMail({ to: o.email, subject, html });
     }
     req.session.flash = { type: 'success', msg: 'Ordine aggiornato e email inviata.' };
