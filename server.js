@@ -57,6 +57,30 @@ app.use((req, res, next) => {
 // Health check (non tocca DB)
 app.get('/healthz', (req, res) => res.status(200).send('ok'));
 
+// fidati del proxy di Render per X-Forwarded-Proto
+app.enable('trust proxy');
+
+// Redirect www → dominio nudo e forza HTTPS sul dominio principale
+app.use((req, res, next) => {
+  const host = (req.headers.host || '').toLowerCase();
+
+  // non toccare l'health check
+  if (req.path === '/healthz') return next();
+
+  // 1) www.djshoprigenerato.eu -> https://djshoprigenerato.eu
+  if (host === 'www.djshoprigenerato.eu') {
+    return res.redirect(301, `https://djshoprigenerato.eu${req.originalUrl}`);
+  }
+
+  // 2) sul dominio principale forza sempre https
+  if (host === 'djshoprigenerato.eu' && req.headers['x-forwarded-proto'] === 'http') {
+    return res.redirect(301, `https://${host}${req.originalUrl}`);
+  }
+
+  next();
+});
+
+
 // Routes
 app.use('/', storeRoutes);
 app.use('/', authRoutes);
