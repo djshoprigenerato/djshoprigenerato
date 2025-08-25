@@ -1,15 +1,19 @@
-<h1 class="page-title">Prodotti</h1>
+<%- include('../layouts/flash') %>
 
-<form method="get" style="display:flex;gap:8px;align-items:center;margin-bottom:12px">
-  <input type="text" name="q" value="<%= q||'' %>" placeholder="Cerca titolo/descrizione…" style="padding:8px;border:1px solid #1f2937;border-radius:8px;width:280px">
-  <select name="category" style="padding:8px;border:1px solid #1f2937;border-radius:8px">
+<div class="page-header">
+  <h1>Prodotti</h1>
+  <a class="btn" href="/admin/products/new">+ Nuovo prodotto</a>
+</div>
+
+<form method="get" action="/admin/products" class="filters">
+  <input type="text" name="q" value="<%= q || '' %>" placeholder="Cerca titolo/descrizione…" />
+  <select name="category">
     <option value="">Tutte le categorie</option>
-    <% (cats||[]).forEach(function(c){ %>
-      <option value="<%= c.slug %>" <%= (category===c.slug?'selected':'') %>><%= c.name %></option>
+    <% (cats||[]).forEach(c => { %>
+      <option value="<%= c.slug %>" <%= category===c.slug?'selected':'' %>><%= c.name %></option>
     <% }) %>
   </select>
-  <button class="btn">Filtra</button>
-  <a class="btn" href="/admin/products/new">+ Nuovo prodotto</a>
+  <button class="btn" type="submit">Filtra</button>
 </form>
 
 <table class="table">
@@ -19,24 +23,31 @@
     </tr>
   </thead>
   <tbody>
-    <% (products||[]).forEach(function(p){ %>
+    <% (products||[]).forEach(p => { %>
       <tr>
         <td><%= p.id %></td>
         <td><a href="/product/<%= p.slug %>" target="_blank"><%= p.title %></a></td>
         <td><%= p.category_name || '-' %></td>
         <td><%= (p.price_cents/100).toFixed(2) %></td>
         <td><%= p.is_active ? 'Sì' : 'No' %></td>
-        <td><%= new Date(p.created_at).toLocaleString() %></td>
-        <td style="white-space:nowrap">
+        <td><%= new Date(p.created_at).toLocaleString('it-IT') %></td>
+        <td class="actions">
           <a class="btn" href="/admin/products/<%= p.id %>/edit">Modifica</a>
-          <form method="post" action="/admin/products/<%= p.id %>/delete" style="display:inline" onsubmit="return confirm('Eliminare definitivamente? (se usato in ordini verrà disattivato)');">
-            <button class="btn btn-danger">Elimina</button>
+          <form method="post" action="/admin/products/<%= p.id %>/delete" onsubmit="return confirm('Eliminare questo prodotto?');">
+            <button class="btn btn-danger" type="submit">Elimina</button>
           </form>
         </td>
       </tr>
     <% }) %>
-    <% if(!(products||[]).length){ %>
-      <tr><td colspan="7">Nessun prodotto trovato.</td></tr>
-    <% } %>
   </tbody>
 </table>
+
+<style>
+.page-header{display:flex;align-items:center;justify-content:space-between;margin:16px 0}
+.filters{display:flex;gap:8px;margin:12px 0}
+.table{width:100%;border-collapse:collapse}
+.table th,.table td{padding:10px;border-bottom:1px solid #1f2937}
+.actions{display:flex;gap:8px}
+.btn{padding:8px 12px;border-radius:8px;background:#374151;color:#fff;text-decoration:none;border:0;cursor:pointer}
+.btn-danger{background:#b91c1c}
+</style>
