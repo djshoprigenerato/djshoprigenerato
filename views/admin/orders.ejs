@@ -1,27 +1,22 @@
-<h1>Ordini</h1>
-<table>
-  <thead><tr><th>ID</th><th>Email</th><th>Totale</th><th>Stato</th><th>Creato</th></tr></thead>
+<h1 class="page-title">Ordini</h1>
+
+<table class="table">
+  <thead>
+    <tr><th>ID</th><th>Data</th><th>Email</th><th>Totale</th><th>Stato</th><th></th></tr>
+  </thead>
   <tbody>
-<p>
-  <a class="btn" href="/admin/orders/<%= order.id %>/pdf">Scarica PDF ordine</a>
-</p>
-
-<form method="post" action="/admin/orders/<%= order.id %>/ship" style="margin-top:12px;display:grid;gap:8px;max-width:460px">
-  <label>Corriere (SDA, GLS, ecc.)</label>
-  <input type="text" name="provider" value="<%= order.shipping_provider||'' %>" placeholder="SDA / GLS" />
-  <label>Tracking</label>
-  <input type="text" name="tracking" value="<%= order.tracking_code||'' %>" placeholder="Codice tracking" />
-  <button class="btn">Salva e invia email al cliente</button>
-</form>
-
-    <% orders.forEach(o => { %>
+    <% (orders||[]).forEach(function(o){ %>
       <tr>
-        <td><a href="/order/<%= o.id %>">#<%= o.id %></a></td>
-        <td><%= o.email %></td>
+        <td>#<%= o.id %></td>
+        <td><%= new Date(o.created_at).toLocaleString() %></td>
+        <td><%= o.email || '' %></td>
         <td>€ <%= (o.total_cents/100).toFixed(2) %></td>
         <td><%= o.status %></td>
-        <td><%= o.created_at %></td>
+        <td><a class="btn" href="/admin/orders/<%= o.id %>">Dettaglio</a></td>
       </tr>
     <% }) %>
+    <% if(!(orders||[]).length){ %>
+      <tr><td colspan="6">Ancora nessun ordine.</td></tr>
+    <% } %>
   </tbody>
 </table>
