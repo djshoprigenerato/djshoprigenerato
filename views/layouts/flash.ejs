@@ -17,3 +17,9 @@
 .flash.error{   border-color:#7f1d1d; background:#2a0f0f; }
 .flash.info{    border-color:#1f2937; background:#0b1220; }
 </style>
+<script>
+// Se la pagina arriva dalla back/forward cache, ricarica per avere dati freschi
+window.addEventListener('pageshow', function (e) {
+  if (e.persisted) location.reload();
+});
+</script>
