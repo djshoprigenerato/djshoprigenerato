@@ -2,6 +2,18 @@
 <table>
   <thead><tr><th>ID</th><th>Email</th><th>Totale</th><th>Stato</th><th>Creato</th></tr></thead>
   <tbody>
+<p>
+  <a class="btn" href="/admin/orders/<%= order.id %>/pdf">Scarica PDF ordine</a>
+</p>
+
+<form method="post" action="/admin/orders/<%= order.id %>/ship" style="margin-top:12px;display:grid;gap:8px;max-width:460px">
+  <label>Corriere (SDA, GLS, ecc.)</label>
+  <input type="text" name="provider" value="<%= order.shipping_provider||'' %>" placeholder="SDA / GLS" />
+  <label>Tracking</label>
+  <input type="text" name="tracking" value="<%= order.tracking_code||'' %>" placeholder="Codice tracking" />
+  <button class="btn">Salva e invia email al cliente</button>
+</form>
+
     <% orders.forEach(o => { %>
       <tr>
         <td><a href="/order/<%= o.id %>">#<%= o.id %></a></td>
