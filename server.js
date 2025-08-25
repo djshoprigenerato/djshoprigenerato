@@ -57,29 +57,20 @@ app.use((req, res, next) => {
 // Health check (non tocca DB)
 app.get('/healthz', (req, res) => res.status(200).send('ok'));
 
-// fidati del proxy di Render per X-Forwarded-Proto
+// fidati del proxy di Render
 app.enable('trust proxy');
 
-// Redirect www → dominio nudo e forza HTTPS sul dominio principale
+// NON cambiare più l'host (niente www -> apex). Forza solo HTTPS se richiesto.
 app.use((req, res, next) => {
-  const host = (req.headers.host || '').toLowerCase();
-
-  // non toccare l'health check
   if (req.path === '/healthz') return next();
 
-  // 1) www.djshoprigenerato.eu -> https://djshoprigenerato.eu
-  if (host === 'www.djshoprigenerato.eu') {
-    return res.redirect(301, `https://djshoprigenerato.eu${req.originalUrl}`);
-  }
-
-  // 2) sul dominio principale forza sempre https
-  if (host === 'djshoprigenerato.eu' && req.headers['x-forwarded-proto'] === 'http') {
-    return res.redirect(301, `https://${host}${req.originalUrl}`);
+  // se FORCE_HTTPS=1 e la richiesta arriva in http, forza https sullo stesso host
+  if (process.env.FORCE_HTTPS === '1' && req.headers['x-forwarded-proto'] === 'http') {
+    return res.redirect(301, `https://${req.headers.host}${req.originalUrl}`);
   }
 
   next();
 });
-
 
 // Routes
 app.use('/', storeRoutes);
