@@ -1,4 +1,4 @@
-// server.js — DJSHOPRIGENERATO (home = '/', helper asset(), no-cache admin)
+// server.js — DJSHOPRIGENERATO (versione stabile)
 
 import express from 'express';
 import session from 'express-session';
@@ -24,7 +24,7 @@ app.use('/public', express.static(path.join(__dirname, 'public'), {
   etag: true,
 }));
 
-// Body parsers
+// Parser
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(express.json({ limit: '10mb' }));
 
@@ -39,33 +39,20 @@ app.use(session({
     httpOnly: true,
     sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production',
-    maxAge: 1000 * 60 * 60 * 8,
+    maxAge: 1000 * 60 * 60 * 8, // 8 ore
   },
 }));
 
-// Flash & variabili globali per le view
+// Flash + variabili base
 app.use((req, res, next) => {
   res.locals.flash = req.session.flash;
   delete req.session.flash;
   res.locals.user = req.session.user || null;
-
-  // BASE normalizzato (senza slash finale)
-  const base = (process.env.BASE_URL || '').replace(/\/+$/, '');
-  res.locals.BASE = base;
-
-  // ✅ Helper per costruire URL asset in modo sicuro
-  // asset('/public/css/site.css') -> '<BASE>/public/css/site.css'
-  // asset('https://...')          -> lasciato com'è (es. URL Supabase)
-  res.locals.asset = (p = '') => {
-    if (!p) return '';
-    if (/^https?:\/\//i.test(p)) return p;                // URL assoluto: non toccare
-    return `${base}${p.startsWith('/') ? p : `/${p}`}`;   // prefix + leading slash
-  };
-
+  res.locals.BASE_URL = process.env.BASE_URL || '';
   next();
 });
 
-// No-cache per admin (evita pagine "stale" col tasto indietro)
+// 🔴 No-cache per area admin (evita pagine "stale" col tasto indietro)
 const noCache = (req, res, next) => {
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   res.set('Pragma', 'no-cache');
@@ -78,13 +65,10 @@ app.use('/admin', noCache);
 // Healthcheck
 app.get('/healthz', (req, res) => res.status(200).send('ok'));
 
-// Home shop su "/"
+// ✅ Comportamento originale
+app.get('/', (req, res) => res.redirect('/store'));
+
 app.use('/', storeRouter);
-
-// Retro-compatibilità: /store -> /
-app.get('/store', (req, res) => res.redirect('/'));
-
-// Admin
 app.use('/admin', adminRouter);
 
 // 404
