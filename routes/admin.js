@@ -1,10 +1,15 @@
-// routes/admin.js — CRUD prodotti/categorie + ordini + galleria con watermark
+// routes/admin.js — CRUD prodotti/categorie + galleria + ordini + watermark + cleanup Storage
 import express from 'express';
 import multer from 'multer';
 import { query } from '../lib/db.js';
 import { buildOrderPdfBuffer } from '../lib/pdf.js';
 import { sendMail, tplShipment } from '../lib/mailer.js';
-import { uploadBufferToStorage, uploadFromUrlToStorage } from '../lib/storage.js';
+import {
+  uploadBufferToStorage,
+  uploadFromUrlToStorage,
+  removePublicUrl,
+  removeManyPublicUrls,
+} from '../lib/storage.js';
 
 const router = express.Router();
 const upload = multer(); // files in-memory
@@ -21,7 +26,24 @@ const slugify = (s) =>
 
 const toCents = (v) => Math.round(parseFloat(String(v || '0').replace(',', '.')) * 100);
 
-// DASHBOARD
+// genera slug unico dentro una tabella, escludendo opzionalmente un id
+async function ensureUniqueSlug(table, baseSlug, excludeId = null) {
+  let base = (baseSlug && baseSlug.trim()) ? baseSlug : 'item';
+  let slug = base;
+  let i = 1;
+  while (true) {
+    const sql = excludeId
+      ? `select 1 from ${table} where slug=$1 and id<>$2 limit 1`
+      : `select 1 from ${table} where slug=$1 limit 1`;
+    const params = excludeId ? [slug, excludeId] : [slug];
+    const r = await query(sql, params);
+    if (r.rowCount === 0) return slug;
+    i++;
+    slug = `${base}-${i}`;
+  }
+}
+
+/* ======================= DASHBOARD ======================= */
 router.get('/', ensureAdmin, async (req, res, next) => {
   try {
     const stats = (await query(`
@@ -57,7 +79,7 @@ router.get('/products', ensureAdmin, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// Nuovo prodotto (form)
+// form nuovo
 router.get('/products/new', ensureAdmin, async (req, res, next) => {
   try {
     const cats = (await query('select id,name from categories order by name')).rows;
@@ -65,7 +87,7 @@ router.get('/products/new', ensureAdmin, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// Crea prodotto (copertina + galleria; watermark anche da URL)
+// crea
 router.post('/products', ensureAdmin, upload.fields([{name:'image',maxCount:1},{name:'images',maxCount:20}]), async (req, res, next) => {
   try {
     const { title, category_id, price, description, is_active, image_url, cover_url, image_urls } = req.body;
@@ -74,13 +96,11 @@ router.post('/products', ensureAdmin, upload.fields([{name:'image',maxCount:1},{
       return res.redirect('/admin/products/new');
     }
 
-    // COPERTINA
+    // copertina
     let cover = null;
     if (req.files?.image?.[0]?.buffer) {
       cover = await uploadBufferToStorage(
-        req.files.image[0].buffer,
-        req.files.image[0].originalname,
-        req.files.image[0].mimetype
+        req.files.image[0].buffer, req.files.image[0].originalname, req.files.image[0].mimetype
       );
     }
     if (!cover && (image_url || cover_url)) {
@@ -88,7 +108,7 @@ router.post('/products', ensureAdmin, upload.fields([{name:'image',maxCount:1},{
       try { cover = await uploadFromUrlToStorage(url); } catch {}
     }
 
-    const slug = slugify(title);
+    const slug = await ensureUniqueSlug('products', slugify(title));
     const ins = await query(
       `insert into products (title, slug, category_id, price_cents, description, image, is_active)
        values ($1,$2,$3,$4,$5,$6,$7) returning id`,
@@ -96,28 +116,23 @@ router.post('/products', ensureAdmin, upload.fields([{name:'image',maxCount:1},{
     );
     const productId = ins.rows[0].id;
 
-    // GALLERIA: URL incollati (uno per riga)
+    // galleria: URL (uno per riga)
     const urlLines = (image_urls || '').split(/\r?\n/).map(s => s.trim()).filter(Boolean);
     const fromUrls = [];
     for (const u of urlLines) {
       try { fromUrls.push(await uploadFromUrlToStorage(u)); } catch {}
     }
-
-    // GALLERIA: file multipli
+    // galleria: file multipli
     const uploaded = [];
     if (req.files?.images?.length) {
       for (const f of req.files.images) {
-        const url = await uploadBufferToStorage(f.buffer, f.originalname, f.mimetype);
-        uploaded.push(url);
+        uploaded.push(await uploadBufferToStorage(f.buffer, f.originalname, f.mimetype));
       }
     }
-
     const allUrls = [...fromUrls, ...uploaded];
     for (let i=0;i<allUrls.length;i++) {
       await query('insert into product_images(product_id,url,sort_order) values($1,$2,$3)', [productId, allUrls[i], i]);
     }
-
-    // Se non avevi messo la cover, usa la prima galleria
     if (!cover && allUrls[0]) {
       await query('update products set image=$1 where id=$2', [allUrls[0], productId]);
     }
@@ -127,7 +142,7 @@ router.post('/products', ensureAdmin, upload.fields([{name:'image',maxCount:1},{
   } catch (e) { next(e); }
 });
 
-// Modifica (form)
+// form modifica
 router.get('/products/:id/edit', ensureAdmin, async (req, res, next) => {
   try {
     const p = (await query('select * from products where id=$1', [req.params.id])).rows[0];
@@ -138,20 +153,18 @@ router.get('/products/:id/edit', ensureAdmin, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// Update (copertina + append galleria)
+// update (append galleria)
 router.post('/products/:id', ensureAdmin, upload.fields([{name:'image',maxCount:1},{name:'images',maxCount:20}]), async (req, res, next) => {
   try {
     const { title, category_id, price, description, is_active, image_url, cover_url, image_urls } = req.body;
     const p = (await query('select * from products where id=$1', [req.params.id])).rows[0];
     if (!p) return res.status(404).render('store/404', { title:'Prodotto non trovato' });
 
-    // COPERTINA
+    // copertina
     let cover = p.image;
     if (req.files?.image?.[0]?.buffer) {
       cover = await uploadBufferToStorage(
-        req.files.image[0].buffer,
-        req.files.image[0].originalname,
-        req.files.image[0].mimetype
+        req.files.image[0].buffer, req.files.image[0].originalname, req.files.image[0].mimetype
       );
     } else if (image_url) {
       try { cover = await uploadFromUrlToStorage(image_url); } catch {}
@@ -163,15 +176,16 @@ router.post('/products/:id', ensureAdmin, upload.fields([{name:'image',maxCount:
       }
     }
 
-    const slug = slugify(title || p.title);
+    const slug = await ensureUniqueSlug('products', slugify(title || p.title), req.params.id);
     await query(
       `update products set
          title=$1, slug=$2, category_id=$3, price_cents=$4, description=$5, image=$6, is_active=$7
        where id=$8`,
-      [title || p.title, slug, category_id || p.category_id, toCents(price ?? p.price_cents/100), description ?? p.description, cover, Boolean(is_active), req.params.id]
+      [title || p.title, slug, category_id || p.category_id, toCents(price ?? p.price_cents/100),
+       description ?? p.description, cover, Boolean(is_active), req.params.id]
     );
 
-    // GALLERIA (append)
+    // galleria append
     const urlLines = (image_urls || '').split(/\r?\n/).map(s => s.trim()).filter(Boolean);
     const fromUrls = [];
     for (const u of urlLines) {
@@ -194,24 +208,42 @@ router.post('/products/:id', ensureAdmin, upload.fields([{name:'image',maxCount:
   } catch (e) { next(e); }
 });
 
-// Elimina prodotto (hard se possibile, altrimenti disattiva)
+// elimina prodotto (+ file) o disattiva se referenziato
 router.post('/products/:id/delete', ensureAdmin, async (req, res, next) => {
   try {
+    const id = req.params.id;
+
+    // raccogli URL (cover + galleria)
+    const coverRow = await query('select image from products where id=$1', [id]);
+    const galleryRows = await query('select url from product_images where product_id=$1', [id]);
+    const urls = [
+      ...(coverRow.rows[0]?.image ? [coverRow.rows[0].image] : []),
+      ...galleryRows.rows.map(r => r.url).filter(Boolean)
+    ];
+
     try {
-      await query('delete from products where id=$1', [req.params.id]);
-      req.session.flash = { type:'success', msg:'Prodotto eliminato.' };
+      await query('delete from product_images where product_id=$1', [id]);
+      await query('delete from products where id=$1', [id]);
+      removeManyPublicUrls(urls).catch(() => {});
+      req.session.flash = { type:'success', msg:'Prodotto eliminato e file rimossi.' };
     } catch {
-      await query('update products set is_active=false where id=$1', [req.params.id]);
-      req.session.flash = { type:'success', msg:'Prodotto disattivato (presente in ordini).' };
+      await query('update products set is_active=false where id=$1', [id]);
+      req.session.flash = { type:'success', msg:'Prodotto disattivato (presente in ordini). File lasciati intatti.' };
     }
+
     res.redirect('/admin/products');
   } catch (e) { next(e); }
 });
 
-// Rimuovi una immagine dalla galleria
+// rimuovi immagine galleria (DB + Storage)
 router.post('/products/:id/images/:imgId/delete', ensureAdmin, async (req, res, next) => {
   try {
-    await query('delete from product_images where id=$1 and product_id=$2', [req.params.imgId, req.params.id]);
+    const del = await query(
+      'delete from product_images where id=$1 and product_id=$2 returning url',
+      [req.params.imgId, req.params.id]
+    );
+    const url = del.rows[0]?.url;
+    if (url) removePublicUrl(url).catch(() => {});
     req.session.flash = { type:'success', msg:'Immagine rimossa.' };
     res.redirect('/admin/products/' + req.params.id + '/edit');
   } catch (e) { next(e); }
@@ -232,7 +264,7 @@ router.post('/categories', ensureAdmin, async (req, res, next) => {
       req.session.flash = { type: 'error', msg: 'Nome categoria obbligatorio.' };
       return res.redirect('/admin/categories');
     }
-    const slug = slugify(name);
+    const slug = await ensureUniqueSlug('categories', slugify(name));
     await query(
       `insert into categories(name, slug, description)
        values($1,$2,$3)
@@ -258,7 +290,7 @@ router.post('/categories/:id', ensureAdmin, async (req, res, next) => {
     const c = (await query('select * from categories where id=$1', [req.params.id])).rows[0];
     if (!c) return res.status(404).render('store/404', { title:'Categoria non trovata' });
 
-    const slug = slugify(name || c.name);
+    const slug = await ensureUniqueSlug('categories', slugify(name || c.name), req.params.id);
     await query('update categories set name=$1, slug=$2, description=$3 where id=$4',
       [name || c.name, slug, description ?? c.description, req.params.id]);
     req.session.flash = { type:'success', msg:'Categoria aggiornata.' };
