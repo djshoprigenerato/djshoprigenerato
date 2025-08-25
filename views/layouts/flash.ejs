@@ -15,6 +15,12 @@
 </style>
 
 <script>
-// Se la pagina è ripristinata dalla back/forward cache, ricarica per avere dati aggiornati
-window.addEventListener('pageshow', function (e) { if (e.persisted) location.reload(); });
+  // Se una pagina admin viene ripristinata dalla back/forward cache, ricaricala
+  (function(){
+    if (location.pathname.startsWith('/admin')) {
+      window.addEventListener('pageshow', function (e) {
+        if (e.persisted) location.reload();
+      });
+    }
+  })();
 </script>
