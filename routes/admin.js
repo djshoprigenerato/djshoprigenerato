@@ -1,122 +1,97 @@
 import express from 'express';
-import multer from 'multer';
 import { query } from '../lib/db.js';
-import { createClient } from '@supabase/supabase-js';
+import { buildOrderPdfBuffer } from '../lib/pdf.js';
+import { sendMail, tplShipment } from '../lib/mailer.js';
 
 const router = express.Router();
-const upload = multer({ storage: multer.memoryStorage() });
 
-function requireAdmin(req, res, next) {
-  if (!req.session.user || !req.session.user.is_admin) {
-    req.session.flash = { type:'error', msg:'Area riservata.' };
-    return res.redirect('/login');
-  }
-  next();
+function ensureAdmin(req, res, next) {
+  if (req.session?.user?.is_admin) return next();
+  req.session.flash = { type: 'error', msg: 'Area riservata.' };
+  return res.redirect('/login');
 }
 
-const supa = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
-  ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
-  : null;
-
-async function uploadToSupabase(file) {
-  if (!supa || !file) return '';
-  const bucket = process.env.SUPABASE_STORAGE_BUCKET || 'uploads';
-  const ext = file.originalname.split('.').pop();
-  const filename = `${Date.now()}-${file.originalname.replace(/[^a-zA-Z0-9.\-_]/g,'')}`;
-  const { data, error } = await supa.storage.from(bucket).upload(filename, file.buffer, {
-    contentType: file.mimetype,
-    upsert: false
-  });
-  if (error) { console.error(error); return ''; }
-  const { data: pub } = supa.storage.from(bucket).getPublicUrl(data.path);
-  return pub.publicUrl;
-}
-
-router.get('/', requireAdmin, async (req, res) => {
-  const stats = {
-    products: (await query('select count(*) c from products')).rows[0].c,
-    categories: (await query('select count(*) c from categories')).rows[0].c,
-    orders: (await query('select count(*) c from orders')).rows[0].c
-  };
-  res.render('admin/dashboard', { title:'Dashboard', stats });
-});
-
-// Categories
-router.get('/categories', requireAdmin, async (req, res) => {
-  const cats = (await query('select * from categories order by name')).rows;
-  res.render('admin/categories', { title:'Categorie', cats });
-});
-
-router.post('/categories', requireAdmin, async (req, res) => {
-  const { name, slug, description } = req.body;
+// DASHBOARD
+router.get('/', ensureAdmin, async (req, res, next) => {
   try {
-    await query('insert into categories(name,slug,description) values($1,$2,$3)', [name, slug, description || '']);
-    req.session.flash = { type:'success', msg:'Categoria creata.' };
-  } catch (e) { req.session.flash = { type:'error', msg:'Errore: slug duplicato?' }; }
-  res.redirect('/admin/categories');
+    const stats = (await query(`
+      select
+        (select count(*) from products) as products,
+        (select count(*) from orders) as orders,
+        (select count(*) from orders where status='paid') as orders_paid
+    `)).rows[0];
+    res.render('admin/dashboard', { title: 'Dashboard', stats });
+  } catch (e) { next(e); }
 });
 
-router.post('/categories/:id', requireAdmin, async (req, res) => {
-  const { name, slug, description } = req.body;
+// PRODOTTI (lista + ricerca/filtri)
+router.get('/products', ensureAdmin, async (req, res, next) => {
   try {
-    await query('update categories set name=$1, slug=$2, description=$3 where id=$4', [name, slug, description || '', req.params.id]);
-    req.session.flash = { type:'success', msg:'Categoria aggiornata.' };
-  } catch (e) { req.session.flash = { type:'error', msg:'Errore aggiornamento.' }; }
-  res.redirect('/admin/categories');
+    const { q = '', category = '' } = req.query;
+    const cats = (await query('select id, name, slug from categories order by name')).rows;
+
+    const where = [];
+    const params = [];
+    if (q) { params.push(`%${q}%`); where.push(`(p.title ilike $${params.length} or p.description ilike $${params.length})`); }
+    if (category) { params.push(category); where.push(`c.slug = $${params.length}`); }
+
+    let sql = `
+      select p.*, c.name as category_name, c.slug as category_slug
+      from products p left join categories c on p.category_id=c.id
+    `;
+    if (where.length) sql += ' where ' + where.join(' and ');
+    sql += ' order by p.created_at desc limit 200';
+
+    const products = (await query(sql, params)).rows;
+    res.render('admin/products_index', { title: 'Prodotti', products, cats, q, category });
+  } catch (e) { next(e); }
 });
 
-router.post('/categories/:id/delete', requireAdmin, async (req, res) => {
-  await query('delete from categories where id=$1', [req.params.id]);
-  req.session.flash = { type:'success', msg:'Categoria eliminata.' };
-  res.redirect('/admin/categories');
-});
-
-// Products
-router.get('/products', requireAdmin, async (req, res) => {
-  const prods = (await query(`select p.*, c.name as category_name
-                              from products p left join categories c on p.category_id=c.id
-                              order by p.created_at desc`)).rows;
-  const cats = (await query('select * from categories order by name')).rows;
-  res.render('admin/products', { title:'Prodotti', prods, cats });
-});
-
-router.post('/products', requireAdmin, upload.single('image'), async (req, res) => {
-  const { category_id, title, slug, description, price_cents, video_url, is_active } = req.body;
-  let image = '';
-  if (req.file) image = await uploadToSupabase(req.file);
+// ORDINI — lista
+router.get('/orders', ensureAdmin, async (req, res, next) => {
   try {
-    await query(`insert into products(category_id,title,slug,description,price_cents,image,video_url,is_active)
-                 values($1,$2,$3,$4,$5,$6,$7,$8)`,
-                 [category_id || null, title, slug, description || '', parseInt(price_cents || 0), image, video_url || '', is_active ? true : false]);
-    req.session.flash = { type:'success', msg:'Prodotto creato.' };
-  } catch (e) { console.error(e); req.session.flash = { type:'error', msg:'Errore: slug duplicato?' }; }
-  res.redirect('/admin/products');
+    const orders = (await query('select * from orders order by created_at desc limit 200')).rows;
+    res.render('admin/orders_index', { title: 'Ordini', orders });
+  } catch (e) { next(e); }
 });
 
-router.post('/products/:id', requireAdmin, upload.single('image'), async (req, res) => {
-  const { category_id, title, slug, description, price_cents, video_url, is_active } = req.body;
-  const r = await query('select * from products where id=$1', [req.params.id]);
-  if (!r.rowCount) { req.session.flash = { type:'error', msg:'Prodotto non trovato.' }; return res.redirect('/admin/products'); }
-  let image = r.rows[0].image;
-  if (req.file) image = await uploadToSupabase(req.file);
+// ORDINE — dettaglio
+router.get('/orders/:id', ensureAdmin, async (req, res, next) => {
   try {
-    await query(`update products set category_id=$1, title=$2, slug=$3, description=$4, price_cents=$5, image=$6, video_url=$7, is_active=$8 where id=$9`,
-                [category_id || null, title, slug, description || '', parseInt(price_cents || 0), image, video_url || '', is_active ? true : false, req.params.id]);
-    req.session.flash = { type:'success', msg:'Prodotto aggiornato.' };
-  } catch (e) { console.error(e); req.session.flash = { type:'error', msg:'Errore aggiornamento.' }; }
-  res.redirect('/admin/products');
+    const order = (await query('select * from orders where id=$1', [req.params.id])).rows[0];
+    if (!order) return res.status(404).render('store/404', { title: 'Ordine non trovato' });
+    const items = (await query('select * from order_items where order_id=$1', [order.id])).rows;
+    res.render('admin/orders_show', { title: 'Ordine #' + order.id, order, items });
+  } catch (e) { next(e); }
 });
 
-router.post('/products/:id/delete', requireAdmin, async (req, res) => {
-  await query('delete from products where id=$1', [req.params.id]);
-  req.session.flash = { type:'success', msg:'Prodotto eliminato.' };
-  res.redirect('/admin/products');
+// ORDINE — PDF
+router.get('/orders/:id/pdf', ensureAdmin, async (req, res, next) => {
+  try {
+    const order = (await query('select * from orders where id=$1', [req.params.id])).rows[0];
+    if (!order) return res.status(404).send('Ordine non trovato');
+    const items = (await query('select * from order_items where order_id=$1', [order.id])).rows;
+
+    const pdf = await buildOrderPdfBuffer(order, items);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="ordine-${order.id}.pdf"`);
+    return res.send(pdf);
+  } catch (e) { next(e); }
 });
 
-// Orders
-router.get('/orders', requireAdmin, async (req, res) => {
-  const orders = (await query('select * from orders order by created_at desc')).rows;
-  res.render('admin/orders', { title:'Ordini', orders });
+// ORDINE — marca SPEDITO + email cliente
+router.post('/orders/:id/ship', ensureAdmin, async (req, res, next) => {
+  try {
+    const { provider, tracking } = req.body;
+    const o = (await query('update orders set shipping_provider=$1, tracking_code=$2, shipped_at=now() where id=$3 returning *',
+      [provider || null, tracking || null, req.params.id])).rows[0];
+    if (o && o.email) {
+      const { subject, html } = tplShipment({ orderId: o.id, provider: o.shipping_provider || 'Corriere', tracking: o.tracking_code || '' });
+      await sendMail({ to: o.email, subject, html });
+    }
+    req.session.flash = { type: 'success', msg: 'Ordine aggiornato e email inviata.' };
+    res.redirect('/admin/orders/' + req.params.id);
+  } catch (e) { next(e); }
 });
 
 export default router;
