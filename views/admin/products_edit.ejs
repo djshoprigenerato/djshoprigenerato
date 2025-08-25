@@ -1,6 +1,6 @@
 <h1 class="page-title">Modifica prodotto</h1>
 
-<form method="post" action="/admin/products/<%= p.id %>" enctype="multipart/form-data" style="display:grid;gap:10px;max-width:640px">
+<form method="post" action="/admin/products/<%= p.id %>" enctype="multipart/form-data" style="display:grid;gap:10px;max-width:720px">
   <label>Titolo</label>
   <input type="text" name="title" value="<%= p.title %>" required>
 
@@ -17,22 +17,35 @@
   <label>Descrizione</label>
   <textarea name="description" rows="6"><%= p.description || '' %></textarea>
 
-  <fieldset style="border:1px dashed #374151;padding:10px;border-radius:8px">
-    <legend>Immagine</legend>
+  <fieldset class="card">
+    <legend>Copertina</legend>
     <% if (p.image) { %>
       <img src="<%= p.image %>" alt="" style="max-width:180px;border-radius:6px;margin-bottom:8px">
     <% } %>
-    <div style="display:flex;gap:10px;align-items:center">
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
       <div>
-        <div>Carica nuovo file</div>
+        <div>Carica nuovo file (copertina)</div>
         <input type="file" name="image" accept="image/*">
       </div>
-      <div>oppure</div>
+      <div>oppure URL</div>
       <div>
-        <div>URL immagine (sovrascrive)</div>
         <input type="url" name="image_url" placeholder="https://…">
       </div>
+      <div>oppure scegli dalla galleria esistente</div>
+      <select name="cover_url">
+        <option value="">(non cambiare)</option>
+        <% (images||[]).forEach(img => { %>
+          <option value="<%= img.url %>"><%= img.url %></option>
+        <% }) %>
+      </select>
     </div>
+  </fieldset>
+
+  <fieldset class="card">
+    <legend>Aggiungi immagini alla galleria</legend>
+    <input type="file" name="images" accept="image/*" multiple>
+    <div style="margin-top:6px">Oppure URL (uno per riga)</div>
+    <textarea name="image_urls" rows="4" placeholder="https://…\nhttps://…"></textarea>
   </fieldset>
 
   <label style="display:flex;gap:8px;align-items:center">
@@ -45,6 +58,21 @@
   </div>
 </form>
 
-<form method="post" action="/admin/products/<%= p.id %>/delete" onsubmit="return confirm('Eliminare definitivamente?');" style="margin-top:12px">
+<h3 style="margin-top:18px">Galleria attuale</h3>
+<div style="display:flex;flex-wrap:wrap;gap:10px">
+  <% (images||[]).forEach(function(img){ %>
+    <div class="card" style="width:180px">
+      <img src="<%= img.url %>" alt="" style="width:100%;border-radius:6px">
+      <form method="post" action="/admin/products/<%= p.id %>/images/<%= img.id %>/delete" onsubmit="return confirm('Rimuovere questa immagine?');" style="margin-top:6px">
+        <button class="btn btn-danger" style="width:100%">Rimuovi</button>
+      </form>
+    </div>
+  <% }) %>
+  <% if(!(images||[]).length){ %>
+    <div>Nessuna immagine aggiuntiva.</div>
+  <% } %>
+</div>
+
+<form method="post" action="/admin/products/<%= p.id %>/delete" onsubmit="return confirm('Eliminare definitivamente? (se usato in ordini verrà disattivato)');" style="margin-top:16px">
   <button class="btn btn-danger">Elimina prodotto</button>
 </form>
