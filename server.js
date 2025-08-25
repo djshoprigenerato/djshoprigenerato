@@ -1,4 +1,4 @@
-// server.js — DJSHOPRIGENERATO (versione stabile)
+// server.js — DJSHOPRIGENERATO (home mostra /store SENZA cambiare URL)
 
 import express from 'express';
 import session from 'express-session';
@@ -52,7 +52,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// 🔴 No-cache per area admin (evita pagine "stale" col tasto indietro)
+// 🔴 No-cache per area admin (evita pagine stale col tasto indietro)
 const noCache = (req, res, next) => {
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   res.set('Pragma', 'no-cache');
@@ -65,9 +65,15 @@ app.use('/admin', noCache);
 // Healthcheck
 app.get('/healthz', (req, res) => res.status(200).send('ok'));
 
-// ✅ Comportamento originale
-app.get('/', (req, res) => res.redirect('/store'));
+// ✅ MOSTRA contenuto di /store su "/" senza cambiare l'URL (niente 302)
+app.use((req, res, next) => {
+  if (req.method === 'GET' && (req.path === '/' || req.path === '/index.html')) {
+    req.url = '/store'; // riscrive solo internamente
+  }
+  next();
+});
 
+// Router principali
 app.use('/', storeRouter);
 app.use('/admin', adminRouter);
 
