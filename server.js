@@ -1,23 +1,18 @@
-// server.js — DJSHOPRIGENERATO
-// Avvio server Express + sessione + no-cache area admin
+// server.js — DJSHOPRIGENERATO (fix home URL)
+// Home = '/', e /store → '/' per retro-compatibilità
 
 import express from 'express';
 import session from 'express-session';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-// Router applicazione
 import storeRouter from './routes/store.js';
 import adminRouter from './routes/admin.js';
-
-// --------------------------------------------------------
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-
-// Render/Heroku behind proxy
 app.set('trust proxy', 1);
 
 // View engine EJS
@@ -30,29 +25,26 @@ app.use('/public', express.static(path.join(__dirname, 'public'), {
   etag: true,
 }));
 
-// Parser (POST forms/JSON)
+// Body parsers
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(express.json({ limit: '10mb' }));
 
-// --------------------------------------------------------
 // Sessione
 const SESSION_SECRET = process.env.SESSION_SECRET || 'dev-secret';
-app.use(
-  session({
-    name: 'djsid',
-    secret: SESSION_SECRET,
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-      httpOnly: true,
-      sameSite: 'lax',
-      secure: process.env.NODE_ENV === 'production',
-      maxAge: 1000 * 60 * 60 * 8, // 8 ore
-    },
-  })
-);
+app.use(session({
+  name: 'djsid',
+  secret: SESSION_SECRET,
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: 1000 * 60 * 60 * 8,
+  },
+}));
 
-// Middleware flash → disponibile in tutte le view
+// Flash → view locals
 app.use((req, res, next) => {
   res.locals.flash = req.session.flash;
   delete req.session.flash;
@@ -61,8 +53,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// --------------------------------------------------------
-// 🔴 NO-CACHE per l'area admin (evita pagine stale con tasto "indietro")
+// No-cache per admin (evita pagine stale col tasto indietro)
 const noCache = (req, res, next) => {
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   res.set('Pragma', 'no-cache');
@@ -72,16 +63,17 @@ const noCache = (req, res, next) => {
 };
 app.use('/admin', noCache);
 
-// --------------------------------------------------------
-// Healthcheck per Render
+// Healthcheck
 app.get('/healthz', (req, res) => res.status(200).send('ok'));
 
-// Home redirect (se vuoi la home dello shop su '/')
-app.get('/', (req, res) => res.redirect('/store'));
+// ✅ Home dello shop su “/” (NIENTE redirect a /store)
+app.use('/', storeRouter);
 
-// Router principali
-app.use('/', storeRouter);      // pagine shop, autenticazione, checkout, ecc.
-app.use('/admin', adminRouter); // backoffice
+// 🔁 Retro-compatibilità: se qualcuno va su /store, rimandalo alla home
+app.get('/store', (req, res) => res.redirect('/'));
+
+// Admin
+app.use('/admin', adminRouter);
 
 // 404
 app.use((req, res) => {
@@ -93,8 +85,7 @@ app.use((req, res) => {
   }
 });
 
-// Error handler compatto
-// Mostra una pagina d’errore “pulita” in produzione
+// Error handler
 app.use((err, req, res, next) => {
   console.error(err);
   res.status(500);
@@ -108,7 +99,6 @@ app.use((err, req, res, next) => {
   }
 });
 
-// --------------------------------------------------------
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
   console.log(`Listening on :${PORT}`);
