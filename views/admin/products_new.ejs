@@ -1,6 +1,6 @@
 <h1 class="page-title">Nuovo prodotto</h1>
 
-<form method="post" action="/admin/products" enctype="multipart/form-data" style="display:grid;gap:10px;max-width:640px">
+<form method="post" action="/admin/products" enctype="multipart/form-data" style="display:grid;gap:10px;max-width:720px">
   <label>Titolo</label>
   <input type="text" name="title" required>
 
@@ -17,19 +17,26 @@
   <label>Descrizione</label>
   <textarea name="description" rows="6"></textarea>
 
-  <fieldset style="border:1px dashed #374151;padding:10px;border-radius:8px">
-    <legend>Immagine</legend>
-    <div style="display:flex;gap:10px;align-items:center">
+  <fieldset class="card">
+    <legend>Immagine di copertina</legend>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
       <div>
-        <div>Carica file</div>
+        <div>Carica file (copertina)</div>
         <input type="file" name="image" accept="image/*">
       </div>
-      <div>oppure</div>
+      <div>oppure URL</div>
       <div>
-        <div>URL immagine pubblica</div>
         <input type="url" name="image_url" placeholder="https://…">
       </div>
     </div>
+  </fieldset>
+
+  <fieldset class="card">
+    <legend>Galleria (multiple)</legend>
+    <div>Carica più file</div>
+    <input type="file" name="images" accept="image/*" multiple>
+    <div style="margin-top:6px">Oppure incolla URL (uno per riga)</div>
+    <textarea name="image_urls" rows="4" placeholder="https://…\nhttps://…"></textarea>
   </fieldset>
 
   <label style="display:flex;gap:8px;align-items:center">
