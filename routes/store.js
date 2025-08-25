@@ -97,20 +97,38 @@ router.post('/checkout', asyncHandler(async (req, res) => {
   }
 
   const session = await stripe.checkout.sessions.create({
-    mode: 'payment',
-    payment_method_types: ['card'],
-    customer_email: email,
-    line_items: req.session.cart.map(i => ({
-      price_data: {
-        currency: 'eur',
-        product_data: { name: i.title },
-        unit_amount: i.price_cents
-      },
-      quantity: i.quantity
-    })),
-    success_url: `${BASE_URL}/checkout/success?session_id={CHECKOUT_SESSION_ID}&oid=${orderId}`,
-    cancel_url: `${BASE_URL}/checkout/cancel?oid=${orderId}`
-  });
+  mode: 'payment',
+  payment_method_types: ['card', 'link'], // Apple Pay/Google Pay arrivano automaticamente
+  customer_email: email,
+  line_items: req.session.cart.map(i => ({
+    price_data: {
+      currency: 'eur',
+      product_data: { name: i.title },
+      unit_amount: i.price_cents
+    },
+    quantity: i.quantity
+  })),
+  // Indirizzo di spedizione (Italia; aggiungi altri paesi se vuoi)
+  shipping_address_collection: { allowed_countries: ['IT'] },
+  // Spedizione gratuita
+  shipping_options: [{
+    shipping_rate_data: {
+      type: 'fixed_amount',
+      fixed_amount: { amount: 0, currency: 'eur' },
+      display_name: 'Spedizione gratuita (SDA & GLS)',
+      delivery_estimate: {
+        minimum: { unit: 'business_day', value: 2 },
+        maximum: { unit: 'business_day', value: 5 }
+      }
+    }
+  }],
+  success_url: `${BASE_URL}/checkout/success?session_id={CHECKOUT_SESSION_ID}&oid=${orderId}`,
+  cancel_url: `${BASE_URL}/checkout/cancel?oid=${orderId}`,
+  // opzionale: branding extra
+  invoice_creation: { enabled: false },
+  allow_promotion_codes: false
+});
+
   await query('update orders set stripe_session_id=$1 where id=$2', [session.id, orderId]);
   res.redirect(303, session.url);
 }));
