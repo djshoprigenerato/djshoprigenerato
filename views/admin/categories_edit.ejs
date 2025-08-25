@@ -1,18 +1,19 @@
-<h1 class="page-title">Modifica categoria</h1>
+<%- include('../layouts/flash') %>
+<h1>Modifica categoria</h1>
 
-<form method="post" action="/admin/categories/<%= c.id %>" style="display:grid;gap:10px;max-width:540px">
-  <label>Nome</label>
-  <input type="text" name="name" value="<%= c.name %>" required>
-
-  <label>Descrizione</label>
-  <textarea name="description" rows="4"><%= c.description || '' %></textarea>
-
-  <div style="display:flex;gap:8px">
-    <button class="btn">Salva</button>
-    <a class="btn" href="/admin/categories">Annulla</a>
-  </div>
+<form method="post" action="/admin/categories/<%= c.id %>" class="form">
+  <label>Nome
+    <input type="text" name="name" value="<%= c.name %>" required />
+  </label>
+  <label>Descrizione
+    <input type="text" name="description" value="<%= c.description || '' %>" />
+  </label>
+  <button class="btn" type="submit">Salva</button>
+  <a class="btn" href="/admin/categories">Indietro</a>
 </form>
 
-<form method="post" action="/admin/categories/<%= c.id %>/delete" onsubmit="return confirm('Eliminare la categoria?');" style="margin-top:12px">
-  <button class="btn btn-danger">Elimina</button>
-</form>
+<style>
+.form{display:grid;gap:12px;max-width:600px}
+label{display:grid;gap:6px}
+.btn{padding:10px 14px;border-radius:8px;background:#374151;color:#fff;border:0;text-decoration:none;width:max-content}
+</style>
