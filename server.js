@@ -1,5 +1,4 @@
-// server.js — DJSHOPRIGENERATO (fix home URL)
-// Home = '/', e /store → '/' per retro-compatibilità
+// server.js — DJSHOPRIGENERATO (home = '/', helper asset(), no-cache admin)
 
 import express from 'express';
 import session from 'express-session';
@@ -44,16 +43,29 @@ app.use(session({
   },
 }));
 
-// Flash → view locals
+// Flash & variabili globali per le view
 app.use((req, res, next) => {
   res.locals.flash = req.session.flash;
   delete req.session.flash;
   res.locals.user = req.session.user || null;
-  res.locals.BASE_URL = process.env.BASE_URL || '';
+
+  // BASE normalizzato (senza slash finale)
+  const base = (process.env.BASE_URL || '').replace(/\/+$/, '');
+  res.locals.BASE = base;
+
+  // ✅ Helper per costruire URL asset in modo sicuro
+  // asset('/public/css/site.css') -> '<BASE>/public/css/site.css'
+  // asset('https://...')          -> lasciato com'è (es. URL Supabase)
+  res.locals.asset = (p = '') => {
+    if (!p) return '';
+    if (/^https?:\/\//i.test(p)) return p;                // URL assoluto: non toccare
+    return `${base}${p.startsWith('/') ? p : `/${p}`}`;   // prefix + leading slash
+  };
+
   next();
 });
 
-// No-cache per admin (evita pagine stale col tasto indietro)
+// No-cache per admin (evita pagine "stale" col tasto indietro)
 const noCache = (req, res, next) => {
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   res.set('Pragma', 'no-cache');
@@ -66,10 +78,10 @@ app.use('/admin', noCache);
 // Healthcheck
 app.get('/healthz', (req, res) => res.status(200).send('ok'));
 
-// ✅ Home dello shop su “/” (NIENTE redirect a /store)
+// Home shop su "/"
 app.use('/', storeRouter);
 
-// 🔁 Retro-compatibilità: se qualcuno va su /store, rimandalo alla home
+// Retro-compatibilità: /store -> /
 app.get('/store', (req, res) => res.redirect('/'));
 
 // Admin
