@@ -29,6 +29,30 @@ app.set('layout', 'layouts/main'); // usa views/layouts/main.ejs
 // Static
 app.use('/public', express.static(path.join(__dirname, 'public')));
 
+// --- Stripe Webhook (PRIMA dei body parsers) ---
+import Stripe from 'stripe';
+import { query } from './lib/db.js';
+const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
+
+if (stripe) {
+  app.post('/webhooks/stripe', express.raw({ type: 'application/json' }), async (req, res) => {
+    const sig = req.headers['stripe-signature'];
+    try {
+      const event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
+      if (event.type === 'checkout.session.completed') {
+        const session = event.data.object;
+        await query('update orders set status=$1 where stripe_session_id=$2', ['paid', session.id]);
+      }
+      res.json({ received: true });
+    } catch (err) {
+      console.error('Webhook verify failed:', err.message);
+      res.status(400).send(`Webhook Error: ${err.message}`);
+    }
+  });
+}
+// --- fine webhook ---
+
+
 // Body parsers
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
