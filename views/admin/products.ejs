@@ -1,3 +1,14 @@
+<form method="get" style="display:flex;gap:8px;align-items:center;margin-bottom:12px">
+  <input type="text" name="q" value="<%= q||'' %>" placeholder="Cerca titolo/descrizione…" style="padding:8px;border:1px solid #1f2937;border-radius:8px;width:280px">
+  <select name="category" style="padding:8px;border:1px solid #1f2937;border-radius:8px">
+    <option value="">Tutte le categorie</option>
+    <% (cats||[]).forEach(function(c){ %>
+      <option value="<%= c.slug %>" <%= (category===c.slug?'selected':'') %>><%= c.name %></option>
+    <% }) %>
+  </select>
+  <button class="btn">Filtra</button>
+</form>
+
 <h1>Prodotti</h1>
 <div class="row">
   <div class="col card">
