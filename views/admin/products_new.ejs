@@ -1,0 +1,43 @@
+<h1 class="page-title">Nuovo prodotto</h1>
+
+<form method="post" action="/admin/products" enctype="multipart/form-data" style="display:grid;gap:10px;max-width:640px">
+  <label>Titolo</label>
+  <input type="text" name="title" required>
+
+  <label>Categoria</label>
+  <select name="category_id" required>
+    <% (cats||[]).forEach(c => { %>
+      <option value="<%= c.id %>"><%= c.name %></option>
+    <% }) %>
+  </select>
+
+  <label>Prezzo (€)</label>
+  <input type="number" name="price" step="0.01" min="0" required>
+
+  <label>Descrizione</label>
+  <textarea name="description" rows="6"></textarea>
+
+  <fieldset style="border:1px dashed #374151;padding:10px;border-radius:8px">
+    <legend>Immagine</legend>
+    <div style="display:flex;gap:10px;align-items:center">
+      <div>
+        <div>Carica file</div>
+        <input type="file" name="image" accept="image/*">
+      </div>
+      <div>oppure</div>
+      <div>
+        <div>URL immagine pubblica</div>
+        <input type="url" name="image_url" placeholder="https://…">
+      </div>
+    </div>
+  </fieldset>
+
+  <label style="display:flex;gap:8px;align-items:center">
+    <input type="checkbox" name="is_active" value="1" checked> Pubblica subito
+  </label>
+
+  <div style="display:flex;gap:8px">
+    <button class="btn">Salva</button>
+    <a class="btn" href="/admin/products">Annulla</a>
+  </div>
+</form>
