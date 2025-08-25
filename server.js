@@ -8,8 +8,10 @@ import methodOverride from 'method-override';
 import { fileURLToPath } from 'url';
 import expressLayouts from 'express-ejs-layouts';
 
-import Stripe from 'stripe';
+import Stripe from 'stripe';                       // <-- UNICO import di Stripe
 import { query } from './lib/db.js';
+import { sendMail, tplOrderConfirmation } from './lib/mailer.js';
+import { buildOrderPdfBuffer } from './lib/pdf.js';
 
 import storeRoutes from './routes/store.js';
 import authRoutes from './routes/auth.js';
@@ -34,11 +36,6 @@ app.use((req, res, next) => {
 });
 
 // ====== Stripe Webhook (PRIMA dei body parsers, raw body!) ======
-import Stripe from 'stripe';
-import { query } from './lib/db.js';
-import { sendMail, tplOrderConfirmation } from './lib/mailer.js';
-import { buildOrderPdfBuffer } from './lib/pdf.js';
-
 const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
 
 if (stripe) {
@@ -86,7 +83,6 @@ if (stripe) {
     }
   });
 }
-
 
 // ====== Static & middlewares ======
 app.use('/public', express.static(path.join(__dirname, 'public')));
