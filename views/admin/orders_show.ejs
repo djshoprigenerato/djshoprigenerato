@@ -1,34 +1,60 @@
-<h1 class="page-title">Ordine #<%= order.id %></h1>
+<%- include('../layouts/flash') %>
+<h1>Ordine #<%= order.id %></h1>
 
-<p><strong>Data:</strong> <%= new Date(order.created_at).toLocaleString() %></p>
-<p><strong>Email cliente:</strong> <%= order.email || '' %></p>
-<p><strong>Stato:</strong> <%= order.status %></p>
-<p><strong>Totale:</strong> € <%= (order.total_cents/100).toFixed(2) %></p>
+<section class="grid2">
+  <div>
+    <h3>Dati ordine</h3>
+    <ul class="list">
+      <li><b>Status:</b> <%= order.status %></li>
+      <li><b>Email:</b> <%= order.email || '-' %></li>
+      <li><b>Totale:</b> € <%= (order.total_cents/100).toFixed(2) %></li>
+      <li><b>Creato:</b> <%= new Date(order.created_at).toLocaleString('it-IT') %></li>
+      <li><b>Corriere:</b> <%= order.shipping_provider || '-' %></li>
+      <li><b>Tracking:</b> <%= order.tracking_code || '-' %></li>
+    </ul>
+    <div class="actions">
+      <a class="btn" href="/admin/orders/<%= order.id %>/pdf">Scarica PDF</a>
+      <a class="btn" href="/admin/orders">Torna agli ordini</a>
+    </div>
+  </div>
+
+  <div>
+    <h3>Aggiorna spedizione</h3>
+    <form method="post" action="/admin/orders/<%= order.id %>/ship" class="form">
+      <label>Corriere
+        <input type="text" name="provider" value="<%= order.shipping_provider || '' %>" placeholder="SDA / GLS / …" />
+      </label>
+      <label>Tracking
+        <input type="text" name="tracking" value="<%= order.tracking_code || '' %>" placeholder="codice tracking" />
+      </label>
+      <button class="btn" type="submit">Salva e invia email</button>
+    </form>
+  </div>
+</section>
 
 <h3>Articoli</h3>
 <table class="table">
-  <thead><tr><th>Titolo</th><th>Quantità</th><th>Prezzo</th><th>Totale</th></tr></thead>
+  <thead><tr><th>Prodotto</th><th>Q.tà</th><th>Prezzo €</th><th>Subtotale €</th></tr></thead>
   <tbody>
-    <% (items||[]).forEach(function(i){ %>
+    <% (items||[]).forEach(i => { %>
       <tr>
         <td><%= i.title %></td>
         <td><%= i.quantity %></td>
-        <td>€ <%= (i.unit_price_cents/100).toFixed(2) %></td>
-        <td>€ <%= ((i.unit_price_cents*i.quantity)/100).toFixed(2) %></td>
+        <td><%= (i.unit_price_cents/100).toFixed(2) %></td>
+        <td><%= ((i.unit_price_cents*i.quantity)/100).toFixed(2) %></td>
       </tr>
     <% }) %>
   </tbody>
 </table>
 
-<p style="margin-top:10px">
-  <a class="btn" href="/admin/orders/<%= order.id %>/pdf">Scarica PDF ordine</a>
-</p>
-
-<h3 style="margin-top:18px">Spedizione</h3>
-<form method="post" action="/admin/orders/<%= order.id %>/ship" style="display:grid;gap:8px;max-width:460px">
-  <label>Corriere (SDA, GLS, ecc.)</label>
-  <input type="text" name="provider" value="<%= order.shipping_provider||'' %>" placeholder="SDA / GLS">
-  <label>Tracking</label>
-  <input type="text" name="tracking" value="<%= order.tracking_code||'' %>" placeholder="Codice tracking">
-  <button class="btn">Salva e invia email al cliente</button>
-</form>
+<style>
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+.list{margin:0;padding-left:16px}
+.table{width:100%;border-collapse:collapse}
+.table th,.table td{padding:10px;border-bottom:1px solid #1f2937}
+.form{display:grid;gap:10px}
+label{display:grid;gap:6px}
+.actions{display:flex;gap:8px;margin-top:8px}
+.btn{padding:8px 12px;border-radius:8px;background:#374151;color:#fff;text-decoration:none;border:0;cursor:pointer}
+@media(max-width:900px){.grid2{grid-template-columns:1fr}}
+</style>
