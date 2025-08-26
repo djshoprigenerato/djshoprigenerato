@@ -1,4 +1,4 @@
-// server.js — DJSHOPRIGENERATO (home mostra /store SENZA cambiare URL)
+// server.js — DJSHOPRIGENERATO (nessun redirect su /)
 
 import express from 'express';
 import session from 'express-session';
@@ -14,7 +14,7 @@ const __dirname = path.dirname(__filename);
 const app = express();
 app.set('trust proxy', 1);
 
-// View engine EJS
+// View engine
 app.set('views', path.join(__dirname, 'views'));
 app.set('view engine', 'ejs');
 
@@ -24,9 +24,9 @@ app.use('/public', express.static(path.join(__dirname, 'public'), {
   etag: true,
 }));
 
-// Parser
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-app.use(express.json({ limit: '10mb' }));
+// Body parsers
+app.use(express.urlencoded({ extended: true, limit: '20mb' }));
+app.use(express.json({ limit: '20mb' }));
 
 // Sessione
 const SESSION_SECRET = process.env.SESSION_SECRET || 'dev-secret';
@@ -43,7 +43,7 @@ app.use(session({
   },
 }));
 
-// Flash + variabili base
+// Flash + locals base
 app.use((req, res, next) => {
   res.locals.flash = req.session.flash;
   delete req.session.flash;
@@ -52,7 +52,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// 🔴 No-cache per area admin (evita pagine stale col tasto indietro)
+// No-cache per /admin
 const noCache = (req, res, next) => {
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   res.set('Pragma', 'no-cache');
@@ -62,18 +62,15 @@ const noCache = (req, res, next) => {
 };
 app.use('/admin', noCache);
 
+// Favicon (metti /public/favicon.ico)
+app.get('/favicon.ico', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'favicon.ico'));
+});
+
 // Healthcheck
 app.get('/healthz', (req, res) => res.status(200).send('ok'));
 
-// ✅ MOSTRA contenuto di /store su "/" senza cambiare l'URL (niente 302)
-app.use((req, res, next) => {
-  if (req.method === 'GET' && (req.path === '/' || req.path === '/index.html')) {
-    req.url = '/store'; // riscrive solo internamente
-  }
-  next();
-});
-
-// Router principali
+// Router
 app.use('/', storeRouter);
 app.use('/admin', adminRouter);
 
