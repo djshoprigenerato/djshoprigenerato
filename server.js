@@ -1,104 +1,127 @@
-// server.js — DJSHOPRIGENERATO (nessun redirect su /)
-
+// server.js — DJSHOPRIGENERATO
+// ES Modules
 import express from 'express';
-import session from 'express-session';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import session from 'express-session';
 
-import storeRouter from './routes/store.js';
-import adminRouter from './routes/admin.js';
+// Se usi altre middleware, lasciale pure qui (helmet/compression/cookieParser, ecc.)
+// import helmet from 'helmet';
+// import compression from 'compression';
+
+// Route modules del progetto
+import storeRoutes from './routes/store.js';
+import adminRoutes from './routes/admin.js';
+import authRoutes from './routes/auth.js';
+
+// ------------------------------------------------------------------
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+const PORT = process.env.PORT || 10000;
+
+// Se stai dietro a Render/Proxy
 app.set('trust proxy', 1);
 
-// View engine
-app.set('views', path.join(__dirname, 'views'));
+// View engine EJS
 app.set('view engine', 'ejs');
-
-// Statici
-app.use('/public', express.static(path.join(__dirname, 'public'), {
-  maxAge: '7d',
-  etag: true,
-}));
+app.set('views', path.join(__dirname, 'views'));
 
 // Body parsers
-app.use(express.urlencoded({ extended: true, limit: '20mb' }));
-app.use(express.json({ limit: '20mb' }));
+app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
 
-// Sessione
-const SESSION_SECRET = process.env.SESSION_SECRET || 'dev-secret';
-app.use(session({
-  name: 'djsid',
-  secret: SESSION_SECRET,
-  resave: false,
-  saveUninitialized: false,
-  cookie: {
-    httpOnly: true,
-    sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
-    maxAge: 1000 * 60 * 60 * 8, // 8 ore
-  },
-}));
+// Sessione (MemoryStore: ok per dev; in prod valuta uno store esterno)
+app.use(
+  session({
+    secret: process.env.SESSION_SECRET || 'change-me',
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: 1000 * 60 * 60 * 2, // 2 ore
+    },
+  })
+);
 
-// Flash + locals base
-app.use((req, res, next) => {
-  res.locals.flash = req.session.flash;
-  delete req.session.flash;
-  res.locals.user = req.session.user || null;
-  res.locals.BASE_URL = process.env.BASE_URL || '';
-  next();
-});
+// ------------------------------------------------------------------
+// FILE STATICI (CSS, immagini, favicon)
+// Serviamo sia senza prefisso che con /public per massima compatibilità
 
-// No-cache per /admin
-const noCache = (req, res, next) => {
-  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-  res.set('Pragma', 'no-cache');
-  res.set('Expires', '0');
-  res.set('Surrogate-Control', 'no-store');
-  next();
-};
-app.use('/admin', noCache);
+// /css, /img, /favicon.ico, /js, ecc.
+app.use(
+  express.static(path.join(__dirname, 'public'), {
+    etag: true,
+    maxAge: '7d',
+    setHeaders: (res, filePath) => {
+      // Non cache su HTML accidentali nella public
+      if (filePath.endsWith('.html')) {
+        res.setHeader('Cache-Control', 'no-store');
+      }
+    },
+  })
+);
 
-// Favicon (metti /public/favicon.ico)
-app.get('/favicon.ico', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'favicon.ico'));
-});
+// Opzionale: disponibili anche con /public/...
+app.use('/public', express.static(path.join(__dirname, 'public')));
 
-// Healthcheck
-app.get('/healthz', (req, res) => res.status(200).send('ok'));
+// favicon (coperta anche dallo static di cui sopra)
+app.get('/favicon.ico', (req, res) =>
+  res.sendFile(path.join(__dirname, 'public', 'favicon.ico'))
+);
 
-// Router
-app.use('/', storeRouter);
-app.use('/admin', adminRouter);
+// ------------------------------------------------------------------
+// Rotte
 
+// Healthcheck per Render
+app.get('/healthz', (req, res) => res.type('text').send('ok'));
+
+// Home, categorie, prodotto, carrello, checkout, ecc.
+// (storeRoutes dovrebbe già definire la GET '/' per la home)
+app.use('/', storeRoutes);
+
+// Login/registrazione
+app.use('/', authRoutes);
+
+// Area admin
+app.use('/admin', adminRoutes);
+
+// Se qualcuno finisce su /store, mandiamolo alla home SENZA cambiare la struttura del sito
+app.get('/store', (req, res) => res.redirect('/'));
+
+// ------------------------------------------------------------------
 // 404
-app.use((req, res) => {
-  res.status(404);
+app.use((req, res, next) => {
+  // Se hai views/store/404.ejs lo usiamo, altrimenti testo semplice
   try {
-    return res.render('store/404', { title: 'Pagina non trovata' });
-  } catch {
-    return res.send('404');
+    return res.status(404).render('store/404', {
+      title: 'Pagina non trovata',
+    });
+  } catch (e) {
+    return res.status(404).type('text').send('404 — Pagina non trovata');
   }
 });
 
 // Error handler
+// eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
-  console.error(err);
-  res.status(500);
+  console.error('❌ Unhandled error:', err);
   try {
-    return res.render('store/error', {
+    return res.status(500).render('store/500', {
       title: 'Errore interno',
       error: process.env.NODE_ENV === 'production' ? null : err,
     });
-  } catch {
-    return res.send('Errore interno');
+  } catch (e) {
+    return res.status(500).type('text').send('500 — Errore interno');
   }
 });
 
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => {
+// ------------------------------------------------------------------
+// Avvio
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`Listening on :${PORT}`);
 });
