@@ -19,7 +19,7 @@
   <link rel="icon" href="/public/favicon.ico">
 </head>
 <body>
-  <!-- eventuali flash globali -->
+  <!-- flash globali + fallback CSS (vedi file flash.ejs) -->
   <% try { %>
     <%- include('./flash') %>
   <% } catch(e) { /* opzionale */ } %>
