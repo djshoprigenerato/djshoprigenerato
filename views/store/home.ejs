@@ -1,0 +1,30 @@
+<h1>DJSHOPRIGENERATO</h1>
+<p style="font-weight:700;color:#f59e0b;">Re-Mix. Re-Fix. Re-Use.</p>
+<div class="card" style="margin:14px 0;"><strong>Nota:</strong> Tutti i prodotti nel catalogo sono <span style="color:#22c55e">rigenerati</span>, testati e coperti da garanzia. <span class="ship-badge">Spedizione gratuita (SDA & GLS)</span></div>
+<h2>Categorie</h2>
+<div class="grid">
+  <% cats.forEach(c => { %>
+    <div class="card">
+      <h3><a href="/category/<%= c.slug %>"><%= c.name %></a></h3>
+      <p><%= c.description %></p>
+    </div>
+  <% }) %>
+</div>
+<h2 style="margin-top:24px;">Novita</h2>
+<div class="grid">
+  <% prods.forEach(p => { %>
+    <div class="card">
+      <a href="/product/<%= p.slug %>">
+        <% if (p.image) { %><img class="product-img" src="<%= p.image %>"><% } else { %>
+          <div class="product-img" style="display:flex;align-items:center;justify-content:center;">Nessuna immagine</div>
+        <% } %>
+        <h3><%= p.title %></h3>
+      </a>
+      <div class="price">€ <%= (p.price_cents/100).toFixed(2) %></div>
+      <form method="post" action="/cart/add">
+        <input type="hidden" name="product_id" value="<%= p.id %>"/>
+        <button class="btn" type="submit">Aggiungi al carrello</button>
+      </form>
+    </div>
+  <% }) %>
+</div>

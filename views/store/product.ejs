@@ -1,0 +1,69 @@
+<style>
+  .prod-wrap { display:grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .prod-main { display:flex; flex-direction:column; gap:12px; }
+  .prod-main img { border-radius:10px; border:1px solid #1f2937; background:#0b0f16; }
+  .thumbs { display:flex; gap:8px; flex-wrap:wrap; }
+  .thumbs img { width:86px; height:86px; object-fit:cover; border-radius:8px; border:2px solid transparent; cursor:pointer; }
+  .thumbs img.is-active { border-color:#f59e0b; }
+  @media (max-width: 900px){ .prod-wrap { grid-template-columns: 1fr; } }
+</style>
+
+<div class="prod-wrap">
+  <div class="prod-main">
+    <% 
+      const firstGallery = (images && images.length) ? images[0].url : null;
+      const cover = firstGallery || p.image || null;
+    %>
+    <% if (cover) { %>
+      <img id="mainImg" class="product-img" style="width:100%;max-height:520px;object-fit:contain" src="<%= cover %>" alt="<%= p.title %>">
+    <% } %>
+
+    <% if ((p.image || (images && images.length))) { %>
+      <div class="thumbs" id="thumbs">
+        <% if (p.image) { %>
+          <img class="is-active" data-src="<%= p.image %>" src="<%= p.image %>" alt="cover">
+        <% } %>
+        <% (images||[]).forEach(function(img, idx){ %>
+          <img class="<%= (!p.image && idx===0 ? 'is-active' : '') %>" data-src="<%= img.url %>" src="<%= img.url %>" alt="galleria <%= idx+1 %>">
+        <% }) %>
+      </div>
+    <% } %>
+
+    <% if (p.video_url) { %>
+      <div style="margin-top:12px">
+        <iframe width="100%" height="360" src="<%= p.video_url.replace('watch?v=', 'embed/') %>" frameborder="0" allowfullscreen></iframe>
+      </div>
+    <% } %>
+  </div>
+
+  <div>
+    <h1><%= p.title %></h1>
+    <p>Categoria: <a href="/category/<%= p.category_slug %>"><%= p.category_name %></a></p>
+    <div class="price" style="margin:8px 0">€ <%= (p.price_cents/100).toFixed(2) %></div>
+    <p><%= p.description %></p>
+    <p><span class="ship-badge">Spedizione gratuita (SDA & GLS)</span></p>
+
+    <form method="post" action="/cart/add" style="margin-top:12px">
+      <input type="hidden" name="product_id" value="<%= p.id %>"/>
+      <label>Quantità</label>
+      <input type="number" min="1" value="1" name="quantity"/>
+      <button class="btn" type="submit">Aggiungi al carrello</button>
+    </form>
+  </div>
+</div>
+
+<script>
+  // switch immagine principale cliccando le thumb
+  document.addEventListener('click', function(ev){
+    const t = ev.target;
+    if (!t.classList || !t.classList.contains('thumbs') && t.tagName !== 'IMG') {
+      if (!t.dataset || !t.dataset.src) return;
+    }
+    if (t.dataset && t.dataset.src) {
+      const main = document.getElementById('mainImg');
+      if (main) main.src = t.dataset.src;
+      document.querySelectorAll('.thumbs img').forEach(el => el.classList.remove('is-active'));
+      t.classList.add('is-active');
+    }
+  });
+</script>

@@ -1,0 +1,26 @@
+<% if (typeof flash !== 'undefined' && flash && flash.msg) { %>
+  <div class="flash <%= flash.type || 'info' %>">
+    <span><%= flash.msg %></span>
+  </div>
+<% } %>
+
+<style>
+.flash{
+  margin:12px 0 16px; padding:10px 14px; border-radius:10px;
+  border:1px solid #1f2937; background:#0b1220; color:#e5e7eb;
+}
+.flash.success{ border-color:#065f46; background:#06281e; }
+.flash.error{   border-color:#7f1d1d; background:#2a0f0f; }
+.flash.info{    border-color:#1f2937; background:#0b1220; }
+</style>
+
+<script>
+  // Se una pagina admin viene ripristinata dalla back/forward cache, ricaricala
+  (function(){
+    if (location.pathname.startsWith('/admin')) {
+      window.addEventListener('pageshow', function (e) {
+        if (e.persisted) location.reload();
+      });
+    }
+  })();
+</script>

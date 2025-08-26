@@ -1,0 +1,40 @@
+<%- include('../layouts/flash') %>
+<div class="page-header">
+  <h1>Categorie</h1>
+</div>
+
+<form method="post" action="/admin/categories" class="form-new">
+  <input type="text" name="name" placeholder="Nome categoria" required />
+  <input type="text" name="description" placeholder="Descrizione (opzionale)" />
+  <button class="btn" type="submit">Salva</button>
+</form>
+
+<table class="table">
+  <thead><tr><th>ID</th><th>Nome</th><th>Slug</th><th></th></tr></thead>
+  <tbody>
+    <% (cats||[]).forEach(c => { %>
+      <tr>
+        <td><%= c.id %></td>
+        <td><%= c.name %></td>
+        <td><%= c.slug %></td>
+        <td class="actions">
+          <a class="btn" href="/admin/categories/<%= c.id %>/edit">Modifica</a>
+          <form method="post" action="/admin/categories/<%= c.id %>/delete" onsubmit="return confirm('Eliminare questa categoria?');">
+            <button class="btn btn-danger" type="submit">Elimina</button>
+          </form>
+        </td>
+      </tr>
+    <% }) %>
+  </tbody>
+</table>
+
+<style>
+.page-header{display:flex;align-items:center;justify-content:space-between;margin:16px 0}
+.form-new{display:grid;grid-template-columns:1fr 1fr max-content;gap:8px;max-width:900px;margin:12px 0}
+.table{width:100%;border-collapse:collapse}
+.table th,.table td{padding:10px;border-bottom:1px solid #1f2937}
+.actions{display:flex;gap:8px}
+.btn{padding:8px 12px;border-radius:8px;background:#374151;color:#fff;text-decoration:none;border:0;cursor:pointer}
+.btn-danger{background:#b91c1c}
+@media(max-width:800px){.form-new{grid-template-columns:1fr;}}
+</style>

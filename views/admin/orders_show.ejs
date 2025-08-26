@@ -1,0 +1,90 @@
+<%- include('../layouts/flash') %>
+<h1>Ordine #<%= order.id %></h1>
+
+<section class="grid2">
+  <div>
+    <h3>Dati ordine</h3>
+    <ul class="list">
+      <li><b>Status:</b> <%= order.status %></li>
+      <li><b>Email:</b> <%= order.email || '-' %></li>
+      <li><b>Totale:</b> € <%= (order.total_cents/100).toFixed(2) %></li>
+      <li><b>Rimborsato:</b> € <%= ((order.refunded_cents||0)/100).toFixed(2) %></li>
+      <li><b>Creato:</b> <%= new Date(order.created_at).toLocaleString('it-IT') %></li>
+    </ul>
+
+    <h3>Spedizione</h3>
+    <ul class="list">
+      <li><b>Nome:</b> <%= order.shipping_fullname || order.fullname || order.name || '-' %></li>
+      <li><b>Indirizzo:</b> <%= order.shipping_address || order.address || '-' %></li>
+      <li><b>CAP/Città/Prov:</b> <%= (order.shipping_zip||order.zip||'') %> <%= (order.shipping_city||order.city||'') %> <%= (order.shipping_state||order.state||'') %></li>
+      <li><b>Nazione:</b> <%= order.shipping_country || order.country || 'IT' %></li>
+      <li><b>Telefono:</b> <%= order.phone || order.shipping_phone || '-' %></li>
+      <li><b>Corriere:</b> <%= order.shipping_provider || '-' %></li>
+      <li><b>Tracking:</b> <%= order.tracking_code || '-' %></li>
+    </ul>
+
+    <div class="actions">
+      <a class="btn" href="/admin/orders/<%= order.id %>/pdf">Scarica PDF</a>
+      <a class="btn" href="/admin/orders">Torna agli ordini</a>
+    </div>
+  </div>
+
+  <div>
+    <h3>Aggiorna spedizione</h3>
+    <form method="post" action="/admin/orders/<%= order.id %>/ship" class="form">
+      <label>Corriere
+        <input type="text" name="provider" value="<%= order.shipping_provider || '' %>" placeholder="SDA / GLS / …" />
+      </label>
+      <label>Tracking
+        <input type="text" name="tracking" value="<%= order.tracking_code || '' %>" placeholder="codice tracking" />
+      </label>
+      <button class="btn" type="submit">Salva e invia email</button>
+    </form>
+
+    <h3 style="margin-top:16px">Cambia stato</h3>
+    <form method="post" action="/admin/orders/<%= order.id %>/status" class="form">
+      <select name="status">
+        <% ['pending','paid','shipped','refunded','cancelled'].forEach(s => { %>
+          <option value="<%= s %>" <%= order.status===s?'selected':'' %>><%= s %></option>
+        <% }) %>
+      </select>
+      <button class="btn" type="submit">Aggiorna stato</button>
+    </form>
+
+    <h3 style="margin-top:16px">Rimborso Stripe</h3>
+    <form method="post" action="/admin/orders/<%= order.id %>/refund" class="form" onsubmit="return confirm('Confermi il rimborso?');">
+      <label>Importo (vuoto = totale residuo)
+        <input type="number" step="0.01" min="0" name="amount" />
+      </label>
+      <button class="btn btn-danger" type="submit">Rimborsa</button>
+    </form>
+  </div>
+</section>
+
+<h3>Articoli</h3>
+<table class="table">
+  <thead><tr><th>Prodotto</th><th>Q.tà</th><th>Prezzo €</th><th>Subtotale €</th></tr></thead>
+  <tbody>
+    <% (items||[]).forEach(i => { %>
+      <tr>
+        <td><%= i.title %></td>
+        <td><%= i.quantity %></td>
+        <td><%= (i.unit_price_cents/100).toFixed(2) %></td>
+        <td><%= ((i.unit_price_cents*i.quantity)/100).toFixed(2) %></td>
+      </tr>
+    <% }) %>
+  </tbody>
+</table>
+
+<style>
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+.list{margin:0;padding-left:16px}
+.table{width:100%;border-collapse:collapse}
+.table th,.table td{padding:10px;border-bottom:1px solid #1f2937}
+.form{display:grid;gap:10px}
+label{display:grid;gap:6px}
+.actions{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+.btn{padding:8px 12px;border-radius:8px;background:#374151;color:#fff;text-decoration:none;border:0;cursor:pointer}
+.btn-danger{background:#b91c1c}
+@media(max-width:900px){.grid2{grid-template-columns:1fr}}
+</style>

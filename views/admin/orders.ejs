@@ -1,0 +1,25 @@
+<h1>Ordini</h1>
+
+<table class="table">
+  <thead>
+    <tr><th>ID</th><th>Email</th><th>Totale €</th><th>Status</th><th>Creato</th><th></th></tr>
+  </thead>
+  <tbody>
+    <% (orders||[]).forEach(o => { %>
+      <tr>
+        <td>#<%= o.id %></td>
+        <td><%= o.email || '-' %></td>
+        <td><%= (o.total_cents/100).toFixed(2) %></td>
+        <td><%= o.status %></td>
+        <td><%= new Date(o.created_at).toLocaleString('it-IT') %></td>
+        <td><a class="btn" href="/admin/orders/<%= o.id %>">Dettaglio</a></td>
+      </tr>
+    <% }) %>
+  </tbody>
+</table>
+
+<style>
+.table{width:100%;border-collapse:collapse}
+.table th,.table td{padding:10px;border-bottom:1px solid #1f2937}
+.btn{padding:8px 12px;border-radius:8px;background:#374151;color:#fff;text-decoration:none;border:0;cursor:pointer}
+</style>

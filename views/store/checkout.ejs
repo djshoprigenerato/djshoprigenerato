@@ -1,0 +1,12 @@
+<h1>Checkout</h1>
+<div class="card">Spedizione sempre gratuita in Italia (SDA & GLS).</div>
+<form method="post" action="/checkout" class="card">
+  <div class="row">
+    <div class="col">
+      <label>Email per la ricevuta</label>
+      <input required type="email" name="email" placeholder="tuo@email.it"/>
+    </div>
+  </div>
+  <p style="margin-top:12px">Il pagamento sara gestito <%= publishableKey ? 'da Stripe' : 'in modalita demo (senza addebito)' %>.</p>
+  <button class="btn" type="submit">Procedi al pagamento</button>
+</form>
