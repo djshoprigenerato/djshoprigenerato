@@ -1,26 +1,18 @@
-<% if (typeof flash !== 'undefined' && flash && flash.msg) { %>
-  <div class="flash <%= flash.type || 'info' %>">
-    <span><%= flash.msg %></span>
-  </div>
+<!-- Fallback CSS & favicon: se una view non passa dal layout, carichiamo comunque lo stile -->
+<link rel="preload" as="style" href="/css/theme.css" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link rel="stylesheet" href="/css/theme.css"></noscript>
+<link rel="icon" href="/favicon.ico">
+
+<!-- eventuale fallback via /public (se hai esposto /public come prefisso) -->
+<link rel="preload" as="style" href="/public/css/theme.css" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link rel="stylesheet" href="/public/css/theme.css"></noscript>
+<link rel="icon" href="/public/favicon.ico">
+
+<!-- Messaggi flash (safe anche se non sono presenti variabili) -->
+<% if (typeof success !== 'undefined' && success) { %>
+  <div class="alert alert-success"><%= success %></div>
 <% } %>
 
-<style>
-.flash{
-  margin:12px 0 16px; padding:10px 14px; border-radius:10px;
-  border:1px solid #1f2937; background:#0b1220; color:#e5e7eb;
-}
-.flash.success{ border-color:#065f46; background:#06281e; }
-.flash.error{   border-color:#7f1d1d; background:#2a0f0f; }
-.flash.info{    border-color:#1f2937; background:#0b1220; }
-</style>
-
-<script>
-  // Se una pagina admin viene ripristinata dalla back/forward cache, ricaricala
-  (function(){
-    if (location.pathname.startsWith('/admin')) {
-      window.addEventListener('pageshow', function (e) {
-        if (e.persisted) location.reload();
-      });
-    }
-  })();
-</script>
+<% if (typeof error !== 'undefined' && error) { %>
+  <div class="alert alert-error"><%= error %></div>
+<% } %>
