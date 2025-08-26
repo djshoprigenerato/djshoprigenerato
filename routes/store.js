@@ -4,6 +4,13 @@ import Stripe from 'stripe';
 import { query } from '../lib/db.js';
 
 const router = express.Router();
+// MOSTRA la home anche per link vecchi su "/store", senza redirect
+router.use((req, res, next) => {
+  if (req.method === 'GET' && (req.path === '/store' || req.path === '/index.html')) {
+    req.url = '/'; // riscrittura interna al router
+  }
+  next();
+});
 const stripeSecret = process.env.STRIPE_SECRET_KEY || null;
 const stripe = stripeSecret ? new Stripe(stripeSecret) : null;
 const BASE_URL = process.env.BASE_URL || 'https://www.djshoprigenerato.eu';
