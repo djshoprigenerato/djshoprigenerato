@@ -1,35 +1,31 @@
-<%- include('../layouts/header', { pageTitle: 'Home – DJSHOPRIGENERATO' }) %>
+<%- include('../layouts/main', { pageTitle: 'Home' }) %>
 
-<section class="grid" style="grid-template-columns:280px 1fr; gap:24px">
+<section class="grid" style="grid-template-columns:280px 1fr">
   <aside class="card">
     <div class="body">
       <h3>Categorie</h3>
-      <ul style="list-style:none;padding:0;margin:0;display:grid;gap:8px">
-        <% (cats || []).forEach(c => { %>
+      <ul class="list-plain">
+        <% cats.forEach(c => { %>
           <li><a class="btn" href="/c/<%= c.slug %>"><%= c.name %></a></li>
         <% }) %>
       </ul>
     </div>
   </aside>
 
-  <div class="grid" style="grid-template-columns:repeat(3, minmax(240px, 1fr)); gap:16px">
-    <% (prods || []).forEach(p => { const img = (p.images || [])[0]?.url; %>
+  <div class="grid prod-grid">
+    <% prods.forEach(p => { const img=(p.images||[])[0]?.url; %>
       <div class="card">
         <a class="imgwrap" href="/p/<%= p.slug %>">
-          <% if (img) { %>
-            <img src="<%= img %>" alt="<%= p.title %>">
-          <% } else { %>
+          <% if (img) { %><img src="<%= img %>" alt="<%= p.title %>"><% } else { %>
             <div class="imgph">Nessuna immagine</div>
           <% } %>
         </a>
         <div class="body">
-          <h3 style="margin-bottom:8px">
-            <a href="/p/<%= p.slug %>"><%= p.title %></a>
-          </h3>
-          <div style="display:flex;justify-content:space-between;align-items:center">
+          <h3><a href="/p/<%= p.slug %>"><%= p.title %></a></h3>
+          <div class="row jc-between ai-center">
             <strong>€ <%= (p.price_cents/100).toFixed(2) %></strong>
             <form method="post" action="/cart/add">
-              <input type="hidden" name="product_id" value="<%= p.id %>" />
+              <input type="hidden" name="product_id" value="<%= p.id %>"/>
               <button class="btn primary">Aggiungi</button>
             </form>
           </div>
