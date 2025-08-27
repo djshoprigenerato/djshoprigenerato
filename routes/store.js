@@ -1,10 +1,13 @@
+// routes/store.js
 import express from 'express';
 import { query } from '../lib/db.js';
 
 const router = express.Router();
 
+// /store -> /
 router.get('/store', (req,res)=> res.redirect('/'));
 
+// Helpers carrello
 function initCart(sess){
   if(!sess.cart) sess.cart = { items:[], subtotal_cents:0, discount_code:null, discount_amount_cents:0, total_cents:0 };
 }
@@ -13,27 +16,40 @@ function recalc(cart){
   cart.total_cents = Math.max(0, cart.subtotal_cents - (cart.discount_amount_cents||0));
 }
 
+// Home
 router.get('/', async (req,res)=>{
   const cats = (await query('SELECT * FROM categories ORDER BY name')).rows;
-  const prods = (await query(`SELECT p.*, c.name AS category
-                              FROM products p LEFT JOIN categories c ON c.id=p.category_id
-                              WHERE published=true ORDER BY p.created_at DESC LIMIT 12`)).rows;
+  const prods = (await query(`
+    SELECT p.*, c.name AS category
+    FROM products p
+    LEFT JOIN categories c ON c.id = p.category_id
+    WHERE p.published = true
+    ORDER BY p.created_at DESC
+    LIMIT 12
+  `)).rows;
   res.render('store/home', { cats, prods, cart: req.session.cart||{} });
 });
 
+// Categoria
 router.get('/c/:slug', async (req,res)=>{
   const cat = await query('SELECT * FROM categories WHERE slug=$1',[req.params.slug]);
   if(!cat.rowCount) return res.status(404).render('store/404');
-  const prods = (await query('SELECT * FROM products WHERE category_id=$1 AND published=true ORDER BY created_at DESC',[cat.rows[0].id])).rows;
+  const prods = (await query(`
+    SELECT * FROM products p
+    WHERE p.category_id=$1 AND p.published=true
+    ORDER BY p.created_at DESC
+  `,[cat.rows[0].id])).rows;
   res.render('store/category', { cat: cat.rows[0], prods, cart: req.session.cart||{} });
 });
 
+// Prodotto
 router.get('/p/:slug', async (req,res)=>{
   const p = await query('SELECT * FROM products WHERE slug=$1',[req.params.slug]);
   if(!p.rowCount) return res.status(404).render('store/404');
   res.render('store/product', { p: p.rows[0], cart: req.session.cart||{} });
 });
 
+// Carrello
 router.get('/cart', (req,res)=>{
   initCart(req.session);
   res.render('store/cart', { cart: req.session.cart });
@@ -52,6 +68,7 @@ router.post('/cart/add', async (req,res)=>{
   res.redirect('/cart');
 });
 
+// Coupon
 router.post('/cart/apply-coupon', async (req,res)=>{
   initCart(req.session);
   const code = (req.body.code||'').trim().toUpperCase();
@@ -74,12 +91,14 @@ router.post('/cart/apply-coupon', async (req,res)=>{
   res.redirect('/cart');
 });
 
+// Checkout minimale (crea ordine)
 router.post('/checkout', async (req,res)=>{
   initCart(req.session);
   const { name, email, phone, address, city, zip, province, country } = req.body;
   const cart = req.session.cart;
   recalc(cart);
-  const ins = await query(`INSERT INTO orders(email,name,phone,shipping,items,subtotal_cents,discount_code,discount_amount_cents,total_cents,status)
+  const ins = await query(`
+    INSERT INTO orders(email,name,phone,shipping,items,subtotal_cents,discount_code,discount_amount_cents,total_cents,status)
     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'paid') RETURNING *`,
     [email, name, phone, {address,city,zip,province,country}, cart.items, cart.subtotal_cents, cart.discount_code, cart.discount_amount_cents, cart.total_cents]);
   if(cart.discount_code) await query('UPDATE discounts SET used_count=used_count+1 WHERE code=$1',[cart.discount_code]);
