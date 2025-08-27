@@ -1,1 +1,5 @@
-<%- include('../layouts/main') %><h1>Errore</h1><p>Qualcosa è andato storto.</p>
+<%- include('../layouts/main', { pageTitle: 'Errore' }) %>
+<h1>Errore interno</h1>
+<p>Qualcosa è andato storto. Riprova più tardi.</p>
+<p><a class="btn" href="/">Torna alla Home</a></p>
+<%- include('../layouts/footer') %>
