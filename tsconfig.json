@@ -13,8 +13,16 @@
     "isolatedModules": true,
     "jsx": "preserve",
     "incremental": true,
-    "types": ["node"]
+
+    // Configurazione per i tipi custom
+    "typeRoots": ["src/types", "node_modules/@types"]
   },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx"],
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    // aggiungiamo la cartella dei tipi custom
+    "src/types"
+  ],
   "exclude": ["node_modules"]
 }
