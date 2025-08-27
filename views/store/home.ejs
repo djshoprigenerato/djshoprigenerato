@@ -1,36 +1,40 @@
-<%- include('../layouts/header', { title: 'Home' }) %>
+<% const title = 'Home'; %>
 
-<section class="grid" style="grid-template-columns:280px 1fr; gap:24px">
-  <aside class="card">
+<section class="home-grid">
+  <!-- Sidebar categorie -->
+  <aside class="card sticky">
     <div class="body">
       <h3>Categorie</h3>
-      <ul class="cat-list">
-        <% (cats || []).forEach(c => { %>
-          <li><a class="btn" href="/c/<%= c.slug %>"><%= c.name %></a></li>
+      <ul class="category-list">
+        <% cats.forEach(c => { %>
+          <li><a href="/c/<%= c.slug %>"><%= c.name %></a></li>
         <% }) %>
       </ul>
     </div>
   </aside>
 
-  <div class="grid products" style="grid-template-columns:repeat(3,1fr); gap:16px">
-    <% (prods || []).forEach(p => { const img = (p.images || [])[0]?.url; %>
-      <div class="card product">
+  <!-- Lista prodotti -->
+  <div class="grid cards">
+    <% prods.forEach(p => { const img=(p.images||[])[0]?.url; %>
+      <article class="card product">
         <a class="imgwrap" href="/p/<%= p.slug %>">
-          <% if (img) { %><img src="<%= img %>" alt="<%= p.title %>" /><% } %>
+          <% if (img) { %>
+            <img src="<%= img %>" alt="<%= p.title %>" />
+          <% } else { %>
+            <div class="noimg">Nessuna immagine</div>
+          <% } %>
         </a>
         <div class="body">
           <h3 class="title"><a href="/p/<%= p.slug %>"><%= p.title %></a></h3>
-          <div class="meta">
-            <strong>€ <%= (p.price_cents/100).toFixed(2) %></strong>
+          <div class="row" style="justify-content:space-between;">
+            <strong class="price">€ <%= (p.price_cents/100).toFixed(2) %></strong>
             <form method="post" action="/cart/add">
-              <input type="hidden" name="product_id" value="<%= p.id %>" />
-              <button class="btn primary">Aggiungi</button>
+              <input type="hidden" name="product_id" value="<%= p.id %>">
+              <button class="btn primary sm" type="submit">Aggiungi</button>
             </form>
           </div>
         </div>
-      </div>
+      </article>
     <% }) %>
   </div>
 </section>
-
-<%- include('../layouts/footer') %>
