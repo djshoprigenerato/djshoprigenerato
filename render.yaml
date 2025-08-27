@@ -1,7 +1,0 @@
-services:
-  - type: web
-    name: djshoprigenerato
-    env: node
-    buildCommand: 'yarn install'
-    startCommand: 'node lib/init.js && node server.js'
-    autoDeploy: true
