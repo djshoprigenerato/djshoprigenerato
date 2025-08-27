@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: dj-shop-rigenerato
+    env: node
+    repo: https://github.com/tuo-utente/dj-shop-rigenerato
+    branch: main
+    buildCommand: "npm install && npm run build"
+    startCommand: "npm run start"
+    envVars:
+      - key: NEXT_PUBLIC_SUPABASE_URL
+        fromService:
+          name: dj-shop-rigenerato
+          key: NEXT_PUBLIC_SUPABASE_URL
+      - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
+        fromService:
+          name: dj-shop-rigenerato
+          key: NEXT_PUBLIC_SUPABASE_ANON_KEY
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        fromService:
+          name: dj-shop-rigenerato
+          key: SUPABASE_SERVICE_ROLE_KEY
+      - key: STRIPE_SECRET_KEY
+        fromService:
+          name: dj-shop-rigenerato
+          key: STRIPE_SECRET_KEY
+      - key: STRIPE_PUBLISHABLE_KEY
+        fromService:
+          name: dj-shop-rigenerato
+          key: STRIPE_PUBLISHABLE_KEY
