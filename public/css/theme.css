@@ -1,10 +1,217 @@
-:root{--bg:#0b0f14;--panel:#0f1622;--text:#e2e8f0;--muted:#94a3b8;--brand:#f59e0b;--danger:#ef4444}
-*{box-sizing:border-box}body{margin:0;background:#0b0f14;color:var(--text);font:16px/1.55 Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
-.container{max-width:1180px;margin:0 auto;padding:32px 20px}.nav{display:flex;gap:16px;align-items:center;padding:14px 20px;background:#0f1218;position:sticky;top:0;z-index:10}
-.nav a{color:var(--text);text-decoration:none}.brand{font-weight:900}.badge{margin-left:8px;font-size:12px;color:#fde68a;border:1px solid rgba(245,158,11,.5);padding:4px 8px;border-radius:999px}
-.grid{display:grid;gap:16px}.card{background:#0f1622;border:1px solid #1f2937;border-radius:14px;overflow:hidden}.card .body{padding:12px}
-.table{width:100%;border-collapse:collapse}.table th,.table td{padding:10px;border-bottom:1px solid #1f2937}.btn{display:inline-block;padding:10px 14px;border-radius:12px;border:1px solid #334155;color:var(--text);text-decoration:none}
-.btn.primary{background:linear-gradient(45deg,#ffd369,#ffb703);color:#0b0f14;border:none;font-weight:800}.btn.danger{border-color:rgba(239,68,68,.5);color:#fecaca}
-input,select,textarea{width:100%;padding:10px;border-radius:10px;border:1px solid #334155;background:#0f172a;color:#e2e8f0}
-.imgwrap{display:block;background:#0b0f14;aspect-ratio:16/10;overflow:hidden}.imgwrap img{width:100%;height:100%;object-fit:cover;display:block}
-footer{margin-top:40px;padding:24px;color:#94a3b8;text-align:center;border-top:1px solid #1f2937}h1,h2{margin:10px 0}
+/* ===========================
+   DJSHOPRIGENERATO — THEME
+   =========================== */
+
+:root{
+  --bg:#0b0f16;
+  --panel:#101723;
+  --soft:#0f1929;
+  --text:#e9eef6;
+  --muted:#9fb3c8;
+  --brand:#ffd200;   /* giallo bottoni */
+  --accent:#4cc9f0;  /* azzurro hover */
+  --danger:#ff6b6b;
+
+  --radius:16px;
+  --shadow:0 10px 30px rgba(0,0,0,.35);
+  --container:1200px;
+  --gap:24px;
+}
+
+*{ box-sizing:border-box }
+html,body{ height:100% }
+body{
+  margin:0;
+  color:var(--text);
+  background:
+    radial-gradient(1000px 700px at 100% 10%, rgba(76,201,240,.06), transparent 55%),
+    radial-gradient(900px 600px at 10% 110%, rgba(255,210,0,.06), transparent 55%),
+    var(--bg);
+  font:16px/1.6 system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial, sans-serif;
+  -webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;
+}
+
+a, a:visited{ color:var(--text); text-decoration:none }
+a:hover{ color:var(--accent) }
+
+.container{
+  width:100%;
+  max-width:var(--container);
+  margin-inline:auto;
+  padding-inline:20px;
+}
+
+.topbar{
+  position:sticky;
+  top:0;
+  z-index:50;
+  background:linear-gradient(180deg, #0f1521, #0e1420);
+  border-bottom:1px solid rgba(255,255,255,.06);
+  box-shadow:0 6px 20px rgba(0,0,0,.3);
+}
+.nav-row{
+  display:flex;
+  gap:16px;
+  align-items:center;
+  min-height:64px;
+}
+.brand{
+  font-weight:800;
+  letter-spacing:.5px;
+}
+.nav-links{
+  margin-left:auto;
+  display:flex;
+  gap:18px;
+}
+.nav-links a{
+  color:var(--muted);
+}
+.nav-links a:hover{
+  color:var(--accent);
+}
+
+.site-footer{
+  margin-top:40px;
+  padding:28px 20px 40px;
+  color:var(--muted);
+  border-top:1px solid rgba(255,255,255,.06);
+  background:linear-gradient(180deg, #0e141f, #0d131d);
+}
+
+/* ============ Helpers ============ */
+.grid{ display:grid; gap:var(--gap) }
+.row{ display:flex; align-items:center; gap:12px }
+.spacer{ flex:1 }
+.muted{ color:var(--muted) }
+
+/* ============ Cards ============== */
+.card{
+  background:linear-gradient(180deg, #0f1521, #0d141f);
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:var(--radius);
+  box-shadow:var(--shadow);
+  overflow:hidden;
+}
+.card .body{ padding:16px }
+
+.imgwrap{
+  display:block;
+  width:100%;
+  aspect-ratio: 4/3;
+  background:linear-gradient(135deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
+  overflow:hidden;
+}
+.imgwrap img{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  display:block;
+}
+.noimg{
+  width:100%;
+  height:100%;
+  display:grid;
+  place-items:center;
+  color:var(--muted);
+  font-size:14px;
+}
+
+/* ============ Buttons ============ */
+.btn{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  padding:10px 14px;
+  font-weight:700;
+  border-radius:12px;
+  border:1px solid transparent;
+  background:rgba(255,255,255,.06);
+  color:var(--text);
+  cursor:pointer;
+  transition:all .2s ease;
+}
+.btn:hover{ filter:brightness(1.08) }
+.btn.primary{
+  background:linear-gradient(180deg, #ffe45e, #ffd200);
+  color:#171717;
+  border-color:#f2c700;
+  text-shadow:0 1px 0 rgba(255,255,255,.4);
+}
+.btn.sm{ padding:8px 12px; font-size:14px }
+
+/* ============ Typography ========= */
+h1,h2,h3{ margin:0 0 10px }
+h1{ font-size: clamp(26px, 2.4vw, 36px) }
+h2{ font-size: clamp(22px, 2.1vw, 30px) }
+h3{ font-size: clamp(18px, 1.6vw, 20px) }
+.title a, .title a:visited{ color:var(--text) }
+.title a:hover{ color:var(--accent) }
+
+/* ============ Home layout ========= */
+.home-grid{
+  display:grid;
+  grid-template-columns: 300px 1fr;
+  gap:var(--gap);
+}
+@media (max-width: 960px){
+  .home-grid{ grid-template-columns: 1fr }
+}
+
+aside.card.sticky{
+  position:sticky;
+  top:calc(64px + 16px);
+  align-self:start;
+}
+
+.category-list{
+  list-style:none;
+  margin:0;
+  padding:0;
+  display:grid;
+  gap:10px;
+}
+.category-list a{
+  display:inline-flex;
+  align-items:center;
+  height:36px;
+  padding:0 12px;
+  border-radius:10px;
+  background:rgba(255,255,255,.06);
+  border:1px solid rgba(255,255,255,.08);
+}
+.category-list a:hover{
+  background:rgba(76,201,240,.12);
+  border-color:rgba(76,201,240,.35);
+}
+
+.cards{
+  grid-template-columns: repeat(12, 1fr);
+}
+.cards > .product{
+  grid-column: span 4;
+}
+@media (max-width: 1200px){
+  .cards{ grid-template-columns: repeat(8, 1fr) }
+  .cards > .product{ grid-column: span 4 }
+}
+@media (max-width: 900px){
+  .cards{ grid-template-columns: repeat(6, 1fr) }
+  .cards > .product{ grid-column: span 3 }
+}
+@media (max-width: 640px){
+  .cards{ grid-template-columns: repeat(4, 1fr) }
+  .cards > .product{ grid-column: span 4 }
+}
+
+.price{
+  font-size:18px;
+  font-weight:800;
+  letter-spacing:.2px;
+}
+
+/* link nei contenuti */
+.card a{ color:var(--text) }
+.card a:hover{ color:var(--accent) }
