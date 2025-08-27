@@ -2,26 +2,30 @@
 <html lang="it">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title><%= typeof title !== 'undefined' ? title + ' – ' : '' %>DJSHOPRIGENERATO</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title><%= pageTitle || 'DJSHOPRIGENERATO' %></title>
 
-  <link rel="icon" href="/public/favicon.ico" />
-  <link rel="stylesheet" href="/public/css/theme.css" />
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="/favicon.ico" />
+
+  <!-- CSS: tema principale -->
+  <link rel="preload" href="/css/theme.css" as="style">
+  <link rel="stylesheet" href="/css/theme.css">
+  <!-- (Se vuoi mantenere anche styles.css, lascia anche questa riga) -->
+  <!-- <link rel="stylesheet" href="/css/styles.css"> -->
 </head>
 <body>
-  <nav class="topbar">
-    <div class="container nav-row">
-      <a class="brand" href="/">DJSHOPRIGENERATO</a>
-      <div class="nav-links">
-        <a href="/faq">FAQ</a>
-        <a href="/contact">Contatti</a>
-        <a href="/cart">Carrello (<%= typeof cartCount !== 'undefined' ? cartCount : 0 %>)</a>
-        <a href="/admin" class="admin-link">Admin</a>
+  <nav class="nav">
+    <div class="container" style="display:flex;gap:20px;align-items:center;justify-content:space-between">
+      <div style="display:flex;gap:16px;align-items:center">
+        <a class="brand" href="/">DJSHOPRIGENERATO</a>
+        <a class="navlink" href="/faq">FAQ</a>
+        <a class="navlink" href="/contact">Contatti</a>
+        <a class="navlink" href="/cart">Carrello</a>
+        <a class="navlink" href="/admin">Admin</a>
       </div>
     </div>
   </nav>
 
   <main class="container">
-    <% try { %>
-      <%- include('../layouts/flash') %>
-    <% } catch(e) { } %>
+    <%- include('./flash') %>
