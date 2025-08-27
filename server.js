@@ -26,8 +26,13 @@ app.set('trust proxy', 1);
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 
-// Statici (serviti da /public/..)
-app.use('/public', express.static(path.join(__dirname, 'public')));
+// Statici: espone /public alla radice (=> /css/theme.css, /favicon.ico, ecc.)
+app.use(
+  express.static(path.join(__dirname, 'public'), {
+    maxAge: process.env.NODE_ENV === 'production' ? '1h' : 0,
+    etag: true,
+  })
+);
 
 // Parsers
 app.use(express.urlencoded({ extended: true }));
@@ -51,7 +56,7 @@ app.use(
 app.get('/healthz', (req, res) => res.type('text').send('ok'));
 
 // Routers
-// NB: lo store deve vivere su "/" (home, categorie, prodotto, ecc.)
+// NB: lo store vive su "/" (home, categorie, prodotto, ecc.)
 app.use('/', storeRoutes);
 // NB: l'admin vive su "/admin"
 app.use('/admin', adminRoutes);
