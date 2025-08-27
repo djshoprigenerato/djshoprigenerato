@@ -6,7 +6,6 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 
-// Routers
 import storeRoutes from './routes/store.js';
 import adminRoutes from './routes/admin.js';
 
@@ -19,20 +18,18 @@ const app  = express();
 const PORT = process.env.PORT || 10000;
 const HOST = '0.0.0.0';
 
-// Fidati del proxy di Render per X-Forwarded-* (necessario per cookie secure)
 app.set('trust proxy', 1);
 
 // View engine
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 
-// Statici: espone /public alla radice (=> /css/theme.css, /favicon.ico, ecc.)
-app.use(
-  express.static(path.join(__dirname, 'public'), {
-    maxAge: process.env.NODE_ENV === 'production' ? '1h' : 0,
-    etag: true,
-  })
-);
+// STATICI
+app.use('/public', express.static(path.join(__dirname, 'public')));
+app.use('/css',     express.static(path.join(__dirname, 'public', 'css')));
+app.use('/img',     express.static(path.join(__dirname, 'public', 'img')));
+app.use('/js',      express.static(path.join(__dirname, 'public', 'js')));
+app.use('/favicon.ico', express.static(path.join(__dirname, 'public', 'favicon.ico')));
 
 // Parsers
 app.use(express.urlencoded({ extended: true }));
@@ -46,22 +43,20 @@ app.use(
     resave: false,
     saveUninitialized: false,
     cookie: {
-      secure: process.env.NODE_ENV === 'production', // ok su Render con trust proxy
+      secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
     },
   })
 );
 
-// Health check (usato da Render e per debug rapido)
+// Healthcheck
 app.get('/healthz', (req, res) => res.type('text').send('ok'));
 
-// Routers
-// NB: lo store vive su "/" (home, categorie, prodotto, ecc.)
+// Router
 app.use('/', storeRoutes);
-// NB: l'admin vive su "/admin"
 app.use('/admin', adminRoutes);
 
-// 404 e 500
+// 404 / 500
 app.use((req, res) => res.status(404).render('store/404'));
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err);
@@ -72,7 +67,6 @@ app.use((err, req, res, next) => {
   }
 });
 
-// Avvio (bind esplicito a 0.0.0.0 per Render)
 app.listen(PORT, HOST, () => {
   console.log(`Listening on ${HOST}:${PORT}`);
 });
