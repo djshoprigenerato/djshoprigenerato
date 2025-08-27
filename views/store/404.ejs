@@ -1,1 +1,5 @@
-<%- include('../layouts/main') %><h1>404</h1><p>Pagina non trovata.</p>
+<%- include('../layouts/main', { pageTitle: '404' }) %>
+<h1>404</h1>
+<p>La pagina richiesta non è stata trovata.</p>
+<p><a class="btn" href="/">Torna alla Home</a></p>
+<%- include('../layouts/footer') %>
