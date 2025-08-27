@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title><%= typeof title !== 'undefined' ? title + ' · ' : '' %>DJSHOPRIGENERATO</title>
+
+  <!-- Favicon -->
+  <link rel="icon" href="/favicon.ico" />
+
+  <!-- CSS principale (palette arancione/verde/nero) -->
+  <link rel="stylesheet" href="/css/theme.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="container">
+      <a class="brand" href="/">DJSHOPRIGENERATO</a>
+      <nav class="nav">
+        <a href="/faq">FAQ</a>
+        <a href="/contact">Contatti</a>
+        <a href="/cart">Carrello</a>
+        <a href="/admin">Admin</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    <%- typeof body !== 'undefined' ? body : '' %>
+    <%- typeof content !== 'undefined' ? content : '' %>
+  </main>
+
+  <footer class="footer">
+    © <%= new Date().getFullYear() %> DJSHOPRIGENERATO — Spedizione gratuita in Italia con SDA & GLS
+  </footer>
+</body>
+</html>
