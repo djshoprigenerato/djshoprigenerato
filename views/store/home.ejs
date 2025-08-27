@@ -1,7 +1,6 @@
 <% const title = 'Home'; %>
 
 <section class="home-grid">
-  <!-- Sidebar categorie -->
   <aside class="card sticky">
     <div class="body">
       <h3>Categorie</h3>
@@ -13,7 +12,6 @@
     </div>
   </aside>
 
-  <!-- Lista prodotti -->
   <div class="grid cards">
     <% prods.forEach(p => { const img=(p.images||[])[0]?.url; %>
       <article class="card product">
