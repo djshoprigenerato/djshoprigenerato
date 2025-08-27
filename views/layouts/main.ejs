@@ -1,21 +1,36 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="it">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>DJSHOPRIGENERATO</title>
-  <link rel="icon" href="/favicon.ico">
-  <link rel="stylesheet" href="/css/styles.css"/>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title><%= typeof title !== 'undefined' ? title + ' – ' : '' %>DJSHOPRIGENERATO</title>
+
+  <link rel="icon" href="/favicon.ico" />
+  <!-- CSS principale: cartella public -> /css/theme.css -->
+  <link rel="stylesheet" href="/css/theme.css" />
 </head>
 <body>
-  <nav class="nav">
-    <a class="brand" href="/">DJSHOPRIGENERATO</a><span class="badge">Re-Mix. Re-Fix. Re-Use.</span>
-    <div style="margin-left:auto;display:flex;gap:12px">
-      <a href="/cart">Carrello</a>
-      <a href="/admin">Admin</a>
+  <nav class="topbar">
+    <div class="container nav-row">
+      <a class="brand" href="/">DJSHOPRIGENERATO</a>
+      <div class="nav-links">
+        <a href="/faq">FAQ</a>
+        <a href="/contact">Contatti</a>
+        <a href="/cart">Carrello (<%= typeof cartCount !== 'undefined' ? cartCount : 0 %>)</a>
+        <a href="/admin" class="admin-link">Admin</a>
+      </div>
     </div>
   </nav>
-  <main class="container"><%- body %></main>
-  <footer>© <%= new Date().getFullYear() %> DJSHOPRIGENERATO — Spedizione gratuita in Italia con SDA & GLS</footer>
+
+  <main class="container">
+    <% try { %>
+      <%- include('../layouts/flash') %>
+    <% } catch(e) { } %>
+    <%- body %>
+  </main>
+
+  <footer class="site-footer">
+    © <%= new Date().getFullYear() %> DJSHOPRIGENERATO — Spedizione gratuita in Italia con SDA & GLS
+  </footer>
 </body>
 </html>
