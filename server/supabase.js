@@ -11,12 +11,12 @@ if (!anonKey) {
   console.warn('Missing SUPABASE_ANON_KEY env var (used for auth token verification).');
 }
 
-// ✅ Client ADMIN per DB/Storage (bypassa RLS)
+// Client ADMIN per DB/Storage (bypassa RLS)
 export const supabaseAdmin = createClient(supabaseUrl, serviceKey, {
   auth: { autoRefreshToken: false, persistSession: false }
 });
 
-// ✅ Client AUTH (anon) per verificare i token utente (getUser(jwt))
+// Client AUTH (anon) per verificare i token utente
 export const supabaseAuth = createClient(supabaseUrl, anonKey, {
   auth: { autoRefreshToken: false, persistSession: false }
 });
