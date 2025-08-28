@@ -1,15 +1,14 @@
-
-import { supabase } from '../supabase.js';
+import { supabaseAuth } from '../supabase.js';
 
 export async function getUserFromAuthHeader(req) {
   const auth = req.headers.authorization || '';
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
   if (!token) return null;
   try {
-    const { data, error } = await supabase.auth.getUser(token);
+    const { data, error } = await supabaseAuth.auth.getUser(token);
     if (error) return null;
     return data.user;
-  } catch (e) {
+  } catch {
     return null;
   }
 }
