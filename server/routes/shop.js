@@ -1,16 +1,16 @@
 // server/routes/shop.js
 import express from 'express'
-import { supabaseAuth, supabaseAdmin } from '../supabase.js'
+import { supabaseAuth } from '../supabase.js'
 
 const router = express.Router()
 
-// ---- PRODOTTI PUBBLICI ----
+// ---- PRODOTTI PUBBLICI (lista) ----
 router.get('/products', async (req, res) => {
   try {
     const { q, category_id } = req.query
     let query = supabaseAuth
       .from('products')
-      .select('id, title, description, price_cents, is_active, category_id, product_images (id, url)')
+      .select('id, title, description, price, price_cents, is_active, category_id, product_images (id, url)')
       .eq('is_active', true)
       .order('id', { ascending: false })
 
@@ -19,6 +19,28 @@ router.get('/products', async (req, res) => {
 
     const { data, error } = await query
     if (error) throw error
+    res.json(data)
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// ---- DETTAGLIO PRODOTTO PUBBLICO ----
+router.get('/products/:id', async (req, res) => {
+  try {
+    const id = Number(req.params.id)
+    if (!id) return res.status(400).json({ error: 'ID non valido' })
+
+    const { data, error } = await supabaseAuth
+      .from('products')
+      .select('id, title, description, price, price_cents, is_active, category_id, product_images (id, url)')
+      .eq('id', id)
+      .eq('is_active', true)
+      .maybeSingle()
+
+    if (error) throw error
+    if (!data) return res.status(404).json({ error: 'Prodotto non trovato' })
+
     res.json(data)
   } catch (e) {
     res.status(500).json({ error: e.message })
