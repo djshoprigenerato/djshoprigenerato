@@ -12,14 +12,12 @@ router.get('/categories', async (req,res) => {
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
 });
-
 router.post('/categories', async (req,res) => {
   const { name, description } = req.body;
   const { data, error } = await supabaseAdmin.from('categories').insert([{ name, description }]).select().single();
   if (error) return res.status(400).json({ error: error.message });
   res.json(data);
 });
-
 router.put('/categories/:id', async (req,res) => {
   const id = req.params.id;
   const { name, description } = req.body;
@@ -27,7 +25,6 @@ router.put('/categories/:id', async (req,res) => {
   if (error) return res.status(400).json({ error: error.message });
   res.json(data);
 });
-
 router.delete('/categories/:id', async (req,res) => {
   const id = req.params.id;
   const { error } = await supabaseAdmin.from('categories').delete().eq('id', id);
@@ -41,30 +38,28 @@ router.get('/products', async (req,res) => {
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
 });
-
 router.post('/products', async (req,res) => {
-  const { title, description, price_cents, stock, is_active, category_id } = req.body;
+  const { title, description, price_eur, stock, is_active, category_id } = req.body;
+  const price_cents = Math.round(Number(price_eur || 0) * 100);
   const { data, error } = await supabaseAdmin.from('products').insert([{
     title, description, price_cents, stock, is_active, category_id
   }]).select().single();
   if (error) return res.status(400).json({ error: error.message });
   res.json(data);
 });
-
 router.put('/products/:id', async (req,res) => {
   const id = req.params.id;
-  const { title, description, price_cents, stock, is_active, category_id } = req.body;
-  const { data, error } = await supabaseAdmin.from('products').update({
-    title, description, price_cents, stock, is_active, category_id
-  }).eq('id', id).select().single();
+  const { title, description, price_eur, stock, is_active, category_id } = req.body;
+  const patch = { title, description, stock, is_active, category_id };
+  if (price_eur !== undefined) patch.price_cents = Math.round(Number(price_eur) * 100);
+  const { data, error } = await supabaseAdmin.from('products').update(patch).eq('id', id).select().single();
   if (error) return res.status(400).json({ error: error.message });
   res.json(data);
 });
-
 router.delete('/products/:id', async (req,res) => {
   const id = parseInt(req.params.id, 10);
   try {
-    await deleteImagesForProduct(id); // elimina dal bucket + DB
+    await deleteImagesForProduct(id);
     const { error } = await supabaseAdmin.from('products').delete().eq('id', id);
     if (error) return res.status(400).json({ error: error.message });
     res.json({ ok: true });
@@ -73,7 +68,7 @@ router.delete('/products/:id', async (req,res) => {
   }
 });
 
-// Registra immagine prodotto (dopo upload su Storage)
+// Registra immagine (dopo upload)
 router.post('/products/:id/images', async (req,res) => {
   const product_id = parseInt(req.params.id, 10);
   const { path, url } = req.body;
@@ -81,7 +76,6 @@ router.post('/products/:id/images', async (req,res) => {
   if (error) return res.status(400).json({ error: error.message });
   res.json(data);
 });
-
 router.delete('/images/:imageId', async (req,res) => {
   const imageId = parseInt(req.params.imageId, 10);
   const bucket = process.env.UPLOADS_BUCKET || 'uploads';
@@ -98,14 +92,12 @@ router.get('/discounts', async (req,res) => {
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
 });
-
 router.post('/discounts', async (req,res) => {
   const { code, percent_off, amount_off_cents, active, expires_at } = req.body;
   const { data, error } = await supabaseAdmin.from('discount_codes').insert([{ code, percent_off, amount_off_cents, active, expires_at }]).select().single();
   if (error) return res.status(400).json({ error: error.message });
   res.json(data);
 });
-
 router.put('/discounts/:id', async (req,res) => {
   const id = req.params.id;
   const patch = req.body || {};
@@ -113,7 +105,6 @@ router.put('/discounts/:id', async (req,res) => {
   if (error) return res.status(400).json({ error: error.message });
   res.json(data);
 });
-
 router.delete('/discounts/:id', async (req,res) => {
   const id = req.params.id;
   const { error } = await supabaseAdmin.from('discount_codes').delete().eq('id', id);
@@ -127,7 +118,6 @@ router.get('/orders', async (req,res) => {
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
 });
-
 router.get('/orders/:id', async (req,res) => {
   const id = req.params.id;
   const { data, error } = await supabaseAdmin.from('orders').select('*, order_items(*)').eq('id', id).single();
