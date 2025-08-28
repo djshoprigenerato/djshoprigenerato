@@ -2,7 +2,6 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom"
 import Navbar from "./components/Navbar"
 
-// Pagine
 import Home from "./pages/Home"
 import Products from "./pages/Products"
 import ProductDetail from "./pages/ProductDetail"
@@ -17,7 +16,6 @@ import Shipping from "./pages/Shipping"
 import Login from "./pages/Login"
 import Register from "./pages/Register"
 
-// Footer semplice (se ce l’hai in un file separato, usa quello)
 function Footer() {
   return (
     <footer className="footer">
@@ -35,7 +33,6 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/prodotti" element={<Products />} />
-          {/* 👇 QUESTA È LA ROTTA CHE MANCAVA */}
           <Route path="/prodotti/:id" element={<ProductDetail />} />
 
           <Route path="/carrello" element={<CartPage />} />
@@ -50,7 +47,6 @@ export default function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/registrati" element={<Register />} />
 
-          {/* 404 client-side */}
           <Route path="*" element={
             <div className="container">
               <h1>404</h1>
