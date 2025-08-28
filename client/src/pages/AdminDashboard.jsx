@@ -9,6 +9,7 @@ export default function AdminDashboard(){
     <div className="container">
       <h1>Admin</h1>
       <div style={{display:'flex', gap:8, marginBottom:12}}>
+        <button className={`btn ${tab==='pages'?'secondary':'ghost'}`} onClick={()=>setTab('pages')}>Pagine</button>
         <button className={`btn ${tab==='products'?'secondary':'ghost'}`} onClick={()=>setTab('products')}>Prodotti</button>
         <button className={`btn ${tab==='categories'?'secondary':'ghost'}`} onClick={()=>setTab('categories')}>Categorie</button>
         <button className={`btn ${tab==='orders'?'secondary':'ghost'}`} onClick={()=>setTab('orders')}>Ordini</button>
@@ -18,6 +19,7 @@ export default function AdminDashboard(){
       {tab==='categories' && <CategoriesAdmin/>}
       {tab==='orders' && <OrdersAdmin/>}
       {tab==='discounts' && <DiscountsAdmin/>}
+      {tab==='pages' && <PagesAdmin/>}
     </div>
   )
 }
@@ -270,6 +272,42 @@ function DiscountsAdmin(){
           </tr>
         ))}</tbody>
       </table>
+    </div>
+  )
+}
+function PagesAdmin(){
+  const [title, setTitle] = useState('Termini e Condizioni')
+  const [html, setHtml] = useState('')
+
+  const load = async () => {
+    try{
+      const cfg = await getAuthConfig()
+      const res = await axios.get('/api/admin/pages/terms', cfg)
+      setTitle(res.data?.title || 'Termini e Condizioni')
+      setHtml(res.data?.content_html || '')
+    }catch(e){ alert('Errore caricamento termini: ' + (e?.response?.data?.error || e.message)) }
+  }
+  useEffect(()=>{ load() }, [])
+
+  const save = async () => {
+    try{
+      const cfg = await getAuthConfig()
+      await axios.put('/api/admin/pages/terms', { title, content_html: html }, cfg)
+      alert('Termini salvati.')
+    }catch(e){ alert('Errore salvataggio: ' + (e?.response?.data?.error || e.message)) }
+  }
+
+  return (
+    <div className="card">
+      <h3>Termini e Condizioni</h3>
+      <label>Titolo</label>
+      <input value={title} onChange={e=>setTitle(e.target.value)} />
+      <label>Contenuto (HTML)</label>
+      <textarea rows="16" value={html} onChange={e=>setHtml(e.target.value)} placeholder="<h2>1. Oggetto</h2>..." />
+      <div style={{display:'flex', gap:8, marginTop:10}}>
+        <button className="btn" onClick={save}>Salva</button>
+        <a className="btn ghost" href="/termini" target="_blank" rel="noreferrer">Vedi pagina</a>
+      </div>
     </div>
   )
 }
