@@ -33,7 +33,14 @@ export default function Checkout(){
 
   const pay = async () => {
     try {
-      const res = await axios.post('/api/create-checkout-session', { cart: items, customer, discount })
+      const cartPayload = items.map(i => ({
+        id: i.id,
+        title: i.title,
+        qty: i.qty,
+        price_cents: i.price_cents,      // Stripe vuole centesimi lato server
+        image_url: i.product_images?.[0]?.url || i.image_url || ''
+      }))
+      const res = await axios.post('/api/create-checkout-session', { cart: cartPayload, customer, discount })
       window.location.href = res.data.url
     } catch (e) {
       alert('Errore nel creare la sessione di pagamento')
@@ -83,12 +90,20 @@ export default function Checkout(){
             <input placeholder="Inserisci codice" value={discountCode} onChange={e=>setDiscountCode(e.target.value)} />
             <button className="btn ghost" onClick={applyDiscount}>Applica</button>
           </div>
-          {discount && <p className="badge">Applicato: {discount.code} {discount.percent_off?`(-${discount.percent_off}%)`:''}{discount.amount_off_cents?`(-${(discount.amount_off_cents/100).toFixed(2)}€)`:''}</p>}
+          {discount && (
+            <p className="badge">
+              Applicato: {discount.code} {discount.percent_off?`(-${discount.percent_off}%)`:''}
+              {discount.amount_off_eur?`(-${discount.amount_off_eur.toFixed(2)}€)`:''}
+            </p>
+          )}
         </div>
         <div>
           <h3>Riepilogo</h3>
           <ul>
-            {items.map(i => <li key={i.id}>{i.title} × {i.qty} — {(i.price_cents/100).toFixed(2)}€</li>)}
+            {items.map(i => {
+              const unitEUR = ((i.price_eur ?? (i.price_cents/100))).toFixed(2)
+              return <li key={i.id}>{i.title} × {i.qty} — {unitEUR}€</li>
+            })}
           </ul>
           <p>Subtotale: {(total/100).toFixed(2)}€</p>
           {discount && <p>Sconto: <strong style={{color:'var(--color-secondary)'}}>applicato</strong></p>}
