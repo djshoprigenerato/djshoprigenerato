@@ -1,4 +1,3 @@
-
 import { Link } from "react-router-dom"
 import { supabase } from "../supabaseClient"
 import { useEffect, useState } from "react"
@@ -7,20 +6,30 @@ export default function Navbar() {
   const [user, setUser] = useState(null)
   const [cartCount, setCartCount] = useState(0)
 
-  const load = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    setUser(user)
-  }
-
   useEffect(() => {
-    load()
+    // carica utente all'avvio
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      setUser(user)
+    })()
+
+    // 🔔 ascolta i cambiamenti di autenticazione (login/logout)
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null)
+    })
+
+    // aggiorna badge carrello
     const handler = () => {
       const raw = localStorage.getItem('cart') || '[]'
       setCartCount(JSON.parse(raw).reduce((n,i)=>n+i.qty,0))
     }
     handler()
     window.addEventListener('cart:updated', handler)
-    return () => window.removeEventListener('cart:updated', handler)
+
+    return () => {
+      sub.subscription.unsubscribe()
+      window.removeEventListener('cart:updated', handler)
+    }
   }, [])
 
   const logout = async () => {
@@ -42,7 +51,9 @@ export default function Navbar() {
           <>
             <Link to="/ordini">I miei ordini</Link>
             <button className="btn ghost" onClick={logout}>Logout</button>
-            { (user.app_metadata?.role === 'admin' || user.user_metadata?.role === 'admin') && <Link to="/admin" className="btn">Admin</Link> }
+            {(user.app_metadata?.role === 'admin' || user.user_metadata?.role === 'admin') && (
+              <Link to="/admin" className="btn">Admin</Link>
+            )}
           </>
         ) : (
           <Link to="/login" className="btn">Accedi</Link>
