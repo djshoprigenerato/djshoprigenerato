@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react"
 import axios from "axios"
 import ProductCard from "../components/ProductCard"
@@ -8,7 +7,7 @@ export default function Products(){
   const [q, setQ] = useState('')
 
   const load = async () => {
-    const res = await axios.get('/api/products', { params: q?{q}:{}})
+    const res = await axios.get('/api/shop/products', { params: q?{q}:{}})
     setItems(res.data)
   }
   useEffect(()=>{ load() },[])
