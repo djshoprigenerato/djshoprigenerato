@@ -120,5 +120,31 @@ router.get('/orders/:id', async (req,res)=>{
   const { data: items } = await supabaseAdmin.from('order_items').select('*').eq('order_id', id)
   res.json({ ...order, order_items: items || [] })
 })
+/** ============ ADMIN PAGINE (Termini) ============ **/
+// Carica Termini
+router.get('/pages/terms', requireAdmin, async (_req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('pages')
+      .select('slug, title, content_html, updated_at')
+      .eq('slug', 'terms')
+      .maybeSingle()
+    if (error) throw error
+    res.json(data || { slug: 'terms', title: 'Termini e Condizioni', content_html: '' })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+// Salva/Upsert Termini
+router.put('/pages/terms', requireAdmin, async (req, res) => {
+  try {
+    const { title, content_html } = req.body
+    const { data, error } = await supabaseAdmin
+      .from('pages')
+      .upsert({ slug: 'terms', title: title || 'Termini e Condizioni', content_html }, { onConflict: 'slug' })
+      .select()
+      .maybeSingle()
+    if (error) throw error
+    res.json(data)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
 
 export default router
