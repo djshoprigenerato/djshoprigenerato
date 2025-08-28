@@ -4,6 +4,10 @@ import { getUserFromAuthHeader } from '../utils/auth.js'
 
 const router = express.Router()
 
+function withPriceEUR(p) {
+  return { ...p, price_eur: (p.price_cents ?? 0) / 100 }
+}
+
 // Prodotti con immagini (solo attivi)
 router.get('/products', async (req, res) => {
   const { category_id, q } = req.query;
@@ -16,7 +20,7 @@ router.get('/products', async (req, res) => {
   if (q) query = query.ilike('title', `%${q}%`);
   const { data, error } = await query;
   if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
+  res.json((data || []).map(withPriceEUR));
 });
 
 // Singolo prodotto
@@ -28,7 +32,7 @@ router.get('/products/:id', async (req, res) => {
     .eq('id', id)
     .single();
   if (error) return res.status(404).json({ error: 'Prodotto non trovato' });
-  res.json(data);
+  res.json(withPriceEUR(data));
 });
 
 // Categorie
@@ -51,7 +55,10 @@ router.get('/discounts/:code', async (req,res) => {
     .maybeSingle();
   if (error) return res.status(500).json({ error: error.message });
   if (!data) return res.status(404).json({ error: 'Invalid code' });
-  res.json(data);
+  res.json({
+    ...data,
+    amount_off_eur: data.amount_off_cents ? (data.amount_off_cents/100) : null
+  });
 });
 
 // Ordini dell'utente loggato
@@ -64,7 +71,7 @@ router.get('/my-orders', async (req, res) => {
     .eq('user_id', user.id)
     .order('id', { ascending: false });
   if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
+  res.json((data||[]).map(o => ({ ...o, total_eur: (o.total_cents||0)/100 })));
 });
 
 export default router
