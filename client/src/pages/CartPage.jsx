@@ -1,22 +1,26 @@
-import { useEffect, useState } from "react"
-import { getCart, setQty, removeFromCart, cartTotalEuro, onCartChanged } from "../store/cartStore"
-import { Link } from "react-router-dom"
+// client/src/pages/CartPage.jsx
+import { useEffect, useState } from "react";
+import { getCart, setQty, removeFromCart, cartTotalCents, onCartChanged } from "../store/cartStore";
+import { Link, useNavigate } from "react-router-dom";
 
-export default function CartPage(){
-  const [items, setItems] = useState(getCart())
-  useEffect(()=>{
-    const off = onCartChanged(setItems)
-    return off
-  },[])
+export default function CartPage() {
+  const nav = useNavigate();
+  const [items, setItems] = useState(getCart());
 
-  const total = cartTotalEuro()
+  useEffect(() => {
+    setItems(getCart());
+    const off = onCartChanged(setItems);
+    return off;
+  }, []);
+
+  const totalCents = cartTotalCents(items);
 
   return (
     <div className="container">
       <h1>Carrello</h1>
       <div className="card">
         {items.length === 0 ? (
-          <p>Nessun articolo nel carrello. <Link to="/prodotti">Vai ai prodotti</Link></p>
+          <p>Il carrello è vuoto. <Link to="/prodotti">Sfoglia i prodotti</Link></p>
         ) : (
           <table className="table">
             <thead>
@@ -29,33 +33,37 @@ export default function CartPage(){
               </tr>
             </thead>
             <tbody>
-              {items.map(it => {
-                const price = Number(it.price || 0)
-                const sub = price * (it.qty || 1)
+              {items.map(i => {
+                const unitEUR = ((Number(i.price_cents) || 0) / 100).toFixed(2);
+                const subEUR = (((Number(i.price_cents) || 0) * (i.qty || 1)) / 100).toFixed(2);
                 return (
-                  <tr key={it.id}>
-                    <td>{it.title}</td>
-                    <td>{price.toFixed(2)}€</td>
+                  <tr key={i.id}>
+                    <td>{i.title}</td>
+                    <td>{unitEUR}€</td>
                     <td>
-                      <div style={{display:'flex', gap:6, alignItems:'center'}}>
-                        <button className="btn ghost" onClick={()=>setQty(it.id, (it.qty||1) - 1)}>-</button>
-                        <span style={{minWidth:24, textAlign:'center'}}>{it.qty||1}</span>
-                        <button className="btn ghost" onClick={()=>setQty(it.id, (it.qty||1) + 1)}>+</button>
+                      <div style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+                        <button className="btn ghost" onClick={() => setQty(i.id, i.qty - 1)}>-</button>
+                        <span>{i.qty}</span>
+                        <button className="btn ghost" onClick={() => setQty(i.id, i.qty + 1)}>+</button>
                       </div>
                     </td>
-                    <td>{sub.toFixed(2)}€</td>
-                    <td><button className="btn ghost" onClick={()=>removeFromCart(it.id)}>Rimuovi</button></td>
+                    <td>{subEUR}€</td>
+                    <td><button className="btn ghost" onClick={() => removeFromCart(i.id)}>Rimuovi</button></td>
                   </tr>
-                )
+                );
               })}
             </tbody>
           </table>
         )}
-        <div style={{display:'flex', justifyContent:'flex-end', gap:12, marginTop:12}}>
-          <div style={{fontWeight:800, fontSize:18}}>Totale: {total.toFixed(2)}€</div>
-          <Link className="btn" to="/checkout">Procedi al checkout</Link>
+        <div style={{ textAlign: 'right', fontWeight: 800, fontSize: 18, marginTop: 10 }}>
+          Totale: {(totalCents / 100).toFixed(2)}€
+        </div>
+        <div style={{ textAlign: 'right', marginTop: 10 }}>
+          <button disabled={!items.length} className="btn" onClick={() => nav('/checkout')}>
+            Procedi al checkout
+          </button>
         </div>
       </div>
     </div>
-  )
+  );
 }
