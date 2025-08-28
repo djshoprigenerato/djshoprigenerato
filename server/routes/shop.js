@@ -1,49 +1,54 @@
+import express from 'express'
+import { supabaseAdmin } from '../supabase.js'
+import { getUserFromAuthHeader } from '../utils/auth.js'
 
-import express from 'express';
-import { supabase } from '../supabase.js';
+const router = express.Router()
 
-const router = express.Router();
-
-router.get('/categories', async (req, res) => {
-  const { data, error } = await supabase.from('categories').select('*').order('id');
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
-});
-
+// 🛒 Prodotti con immagini
 router.get('/products', async (req, res) => {
-  const { category_id, q } = req.query;
-  let query = supabase.from('products').select('*, product_images(url)').eq('is_active', true).order('id', {ascending:false});
-  if (category_id) query = query.eq('category_id', category_id);
-  if (q) query = query.ilike('title', `%${q}%`);
-  const { data, error } = await query;
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
-});
+  const { data, error } = await supabaseAdmin
+    .from('products')
+    .select('*, product_images(*)')
+    .eq('is_active', true)
+    .order('id', { ascending: false })
+  if (error) return res.status(500).json({ error: error.message })
+  res.json(data)
+})
 
+// 🛒 Singolo prodotto
 router.get('/products/:id', async (req, res) => {
-  const id = req.params.id;
-  const { data, error } = await supabase
+  const id = req.params.id
+  const { data, error } = await supabaseAdmin
     .from('products')
     .select('*, product_images(*)')
     .eq('id', id)
-    .single();
-  if (error) return res.status(404).json({ error: 'Not found' });
-  res.json(data);
-});
+    .single()
+  if (error) return res.status(404).json({ error: 'Prodotto non trovato' })
+  res.json(data)
+})
 
-router.get('/discounts/:code', async (req,res) => {
-  const code = (req.params.code || '').trim();
-  const now = new Date().toISOString();
-  const { data, error } = await supabase
-    .from('discount_codes')
+// 📂 Categorie
+router.get('/categories', async (req, res) => {
+  const { data, error } = await supabaseAdmin
+    .from('categories')
     .select('*')
-    .eq('code', code)
-    .eq('active', true)
-    .or(`expires_at.is.null,expires_at.gt.${now}`)
-    .maybeSingle();
-  if (error) return res.status(500).json({ error: error.message });
-  if (!data) return res.status(404).json({ error: 'Invalid code' });
-  res.json(data);
-});
+    .order('id')
+  if (error) return res.status(500).json({ error: error.message })
+  res.json(data)
+})
 
-export default router;
+// 💳 Ordini utente loggato
+router.get('/my-orders', async (req, res) => {
+  const user = await getUserFromAuthHeader(req)
+  if (!user) return res.status(401).json({ error: 'Non autorizzato' })
+
+  const { data, error } = await supabaseAdmin
+    .from('orders')
+    .select('*, order_items(*)')
+    .eq('user_id', user.id)
+    .order('id', { ascending: false })
+  if (error) return res.status(500).json({ error: error.message })
+  res.json(data)
+})
+
+export default router
