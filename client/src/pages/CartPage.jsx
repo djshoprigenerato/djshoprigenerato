@@ -1,21 +1,44 @@
 import { useEffect, useState } from "react"
-import { getCart, setCart, cartTotalCents, removeFromCart, addToCart } from "../store/cartStore"
+import { getCart, cartTotalCents, removeFromCart } from "../store/cartStore"
 import { Link } from "react-router-dom"
 
 export default function CartPage(){
   const [items, setItems] = useState([])
 
-  const refresh = () => {
-    setItems(getCart())
+  const read = () => getCart()
+  const save = (cart) => {
+    localStorage.setItem('cart', JSON.stringify(cart))
+    window.dispatchEvent(new Event('cart:updated'))
   }
+
+  const refresh = () => setItems(read())
   useEffect(()=>{ refresh() }, [])
 
-  const inc = (p) => { addToCart(p,1); refresh() }
-  const dec = (p) => {
-    const cart = getCart().map(i => i.id===p.id ? {...i, qty: Math.max(0, i.qty-1)} : i).filter(i=>i.qty>0)
-    setCart(cart); refresh()
+  const inc = (p) => {
+    const cart = read()
+    const idx = cart.findIndex(i => i.id === p.id)
+    if (idx >= 0) {
+      cart[idx].qty += 1
+      save(cart)
+      refresh()
+    }
   }
-  const del = (p) => { removeFromCart(p.id); refresh() }
+
+  const dec = (p) => {
+    const cart = read()
+    const idx = cart.findIndex(i => i.id === p.id)
+    if (idx >= 0) {
+      cart[idx].qty = Math.max(0, cart[idx].qty - 1)
+      const next = cart.filter(i => i.qty > 0)
+      save(next)
+      refresh()
+    }
+  }
+
+  const del = (p) => {
+    removeFromCart(p.id)
+    refresh()
+  }
 
   const totalCents = cartTotalCents(items)
   const totalEUR = (totalCents/100).toFixed(2)
