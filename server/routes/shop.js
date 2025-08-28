@@ -4,51 +4,67 @@ import { getUserFromAuthHeader } from '../utils/auth.js'
 
 const router = express.Router()
 
-// 🛒 Prodotti con immagini
+// Prodotti con immagini (solo attivi)
 router.get('/products', async (req, res) => {
-  const { data, error } = await supabaseAdmin
+  const { category_id, q } = req.query;
+  let query = supabaseAdmin
     .from('products')
-    .select('*, product_images(*)')
+    .select('*, product_images(url)')
     .eq('is_active', true)
-    .order('id', { ascending: false })
-  if (error) return res.status(500).json({ error: error.message })
-  res.json(data)
-})
+    .order('id', { ascending: false });
+  if (category_id) query = query.eq('category_id', category_id);
+  if (q) query = query.ilike('title', `%${q}%`);
+  const { data, error } = await query;
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
 
-// 🛒 Singolo prodotto
+// Singolo prodotto
 router.get('/products/:id', async (req, res) => {
-  const id = req.params.id
+  const id = req.params.id;
   const { data, error } = await supabaseAdmin
     .from('products')
     .select('*, product_images(*)')
     .eq('id', id)
-    .single()
-  if (error) return res.status(404).json({ error: 'Prodotto non trovato' })
-  res.json(data)
-})
+    .single();
+  if (error) return res.status(404).json({ error: 'Prodotto non trovato' });
+  res.json(data);
+});
 
-// 📂 Categorie
+// Categorie
 router.get('/categories', async (req, res) => {
+  const { data, error } = await supabaseAdmin.from('categories').select('*').order('id');
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+// Codice sconto pubblico (per checkout)
+router.get('/discounts/:code', async (req,res) => {
+  const code = (req.params.code || '').trim();
+  const now = new Date().toISOString();
   const { data, error } = await supabaseAdmin
-    .from('categories')
+    .from('discount_codes')
     .select('*')
-    .order('id')
-  if (error) return res.status(500).json({ error: error.message })
-  res.json(data)
-})
+    .eq('code', code)
+    .eq('active', true)
+    .or(`expires_at.is.null,expires_at.gt.${now}`)
+    .maybeSingle();
+  if (error) return res.status(500).json({ error: error.message });
+  if (!data) return res.status(404).json({ error: 'Invalid code' });
+  res.json(data);
+});
 
-// 💳 Ordini utente loggato
+// Ordini dell'utente loggato
 router.get('/my-orders', async (req, res) => {
-  const user = await getUserFromAuthHeader(req)
-  if (!user) return res.status(401).json({ error: 'Non autorizzato' })
-
+  const user = await getUserFromAuthHeader(req);
+  if (!user) return res.status(401).json({ error: 'Non autorizzato' });
   const { data, error } = await supabaseAdmin
     .from('orders')
-    .select('*, order_items(*)')
+    .select('id, created_at, status, total_cents')
     .eq('user_id', user.id)
-    .order('id', { ascending: false })
-  if (error) return res.status(500).json({ error: error.message })
-  res.json(data)
-})
+    .order('id', { ascending: false });
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
 
 export default router
