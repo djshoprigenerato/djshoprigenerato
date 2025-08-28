@@ -22,7 +22,7 @@ export default function Home(){
   }
 
   useEffect(()=>{ loadCats() },[])
-  useEffect(()=>{ loadProducts() },[cat]) // ricarica al cambio categoria
+  useEffect(()=>{ loadProducts() },[cat])
 
   return (
     <div className="container">
@@ -53,10 +53,9 @@ export default function Home(){
               <button className="btn" onClick={loadProducts}>Cerca</button>
             </div>
           </div>
-          <div>
-            <label>&nbsp;</label>
-            <Link to="/prodotti" className="btn ghost">Vai alla pagina Prodotti</Link>
-          </div>
+
+          {/* ⬇️  bottone “Vai alla pagina Prodotti” rimosso */}
+          {/* (vuoto intenzionale) */}
         </div>
       </div>
 
