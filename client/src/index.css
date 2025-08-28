@@ -1,0 +1,39 @@
+:root{
+  --bg: #0e1116;
+  --panel: #171c23;
+  --primary: #ff8c1a;
+  --secondary: #2ecc71;
+  --text: #f4efe6;
+  --muted: #9aa3ad;
+  --line: #262d36;
+  --radius-lg: 16px;
+  --radius: 12px;
+  --shadow: 0 8px 24px rgba(0,0,0,.25);
+}
+*{box-sizing:border-box}
+html,body,#root{height:100%}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+.container{max-width:1200px;margin:0 auto;padding:24px}
+.card{background:var(--panel);border-radius:var(--radius-lg);padding:16px;box-shadow:var(--shadow);border:1px solid var(--line)}
+.grid{display:grid;gap:16px}
+.products-grid{grid-template-columns: repeat(auto-fill,minmax(220px,1fr))}
+.navbar{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:10px 16px;background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:50}
+.navbar a{color:var(--text);text-decoration:none;opacity:.92}
+.navbar a:hover{opacity:1}
+.logo{display:flex;align-items:center;gap:8px}
+.logo img{height:36px}
+.btn{background:var(--primary);color:#1b1106;border:none;border-radius:12px;padding:8px 14px;cursor:pointer;font-weight:700}
+.btn:hover{filter:brightness(1.06)}
+.btn.ghost{background:transparent;border:1px solid var(--primary);color:var(--primary)}
+.btn.secondary{background:var(--secondary);color:#0b2a17}
+input,select,textarea{width:100%;padding:10px 12px;border-radius:10px;background:#0f141b;color:var(--text);border:1px solid var(--line);outline:none}
+label{display:block;margin:10px 0 6px;color:var(--muted)}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.table{width:100%;border-collapse:collapse}
+.table th,.table td{padding:10px;border-bottom:1px solid var(--line);text-align:left}
+.price{font-weight:700;color:var(--primary)}
+.product-card{display:flex;flex-direction:column;gap:10px;height:100%}
+.product-img{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:12px;border:1px solid var(--line);background:#0b0f14}
+.badge{display:inline-block;padding:4px 8px;border-radius:999px;background:#232a32;color:var(--muted);font-size:12px}
+.badge.free{background:var(--secondary);color:#062b15;font-weight:800}
+@media (max-width:740px){.container{padding:16px}.form-row{grid-template-columns:1fr}}
