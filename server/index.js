@@ -1,40 +1,38 @@
+import express from 'express'
+import path from 'path'
+import { fileURLToPath } from 'url'
+import cors from 'cors'
 
-import express from 'express';
-import path from 'path';
-import cors from 'cors';
-import dotenv from 'dotenv';
-import { fileURLToPath } from 'url';
+// Importa le route aggiornate
+import adminRoutes from './routes/admin.js'
+import shopRoutes from './routes/shop.js'
+import stripeRoutes from './routes/stripe.js'
 
-dotenv.config();
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
 
-const app = express();
-const PORT = process.env.PORT || 3000;
+const app = express()
 
-// Webhook needs raw body, so mount that route before json()
-import stripeRoutes from './routes/stripe.js';
-app.use('/api', stripeRoutes);
+// Middleware base
+app.use(cors())
+app.use(express.json()) // per JSON body
 
-// JSON parser for all other routes
-app.use(cors());
-app.use(express.json());
+// Routes API
+app.use('/api/admin', adminRoutes)
+app.use('/api/shop', shopRoutes)
+app.use('/api', stripeRoutes) // webhook Stripe incluso
 
-// Public shop & admin APIs
-import shopRoutes from './routes/shop.js';
-import adminRoutes from './routes/admin.js';
-app.use('/api', shopRoutes);
-app.use('/api/admin', adminRoutes);
+// Serve il frontend buildato (React)
+const clientBuildPath = path.join(__dirname, '../client/dist')
+app.use(express.static(clientBuildPath))
 
-// Serve the built client
-const clientDist = path.join(__dirname, '..', 'client', 'dist');
-app.use(express.static(clientDist));
-
-// History API fallback for SPA
+// Catch-all → React Router gestisce le route
 app.get('*', (req, res) => {
-  res.sendFile(path.join(clientDist, 'index.html'));
-});
+  res.sendFile(path.join(clientBuildPath, 'index.html'))
+})
 
+// Avvio server
+const PORT = process.env.PORT || 3000
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+  console.log(`✅ Server avviato su porta ${PORT}`)
+})
