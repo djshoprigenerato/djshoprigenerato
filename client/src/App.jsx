@@ -14,7 +14,6 @@ import Payments from "./pages/Payments"
 import Shipping from "./pages/Shipping"
 import Login from "./pages/Login"
 import Register from "./pages/Register"
-import Terms from "./pages/Terms"
 
 function Footer() {
   return (
