@@ -1,3 +1,4 @@
+// client/src/pages/AdminDashboard.jsx
 import { useEffect, useState } from "react"
 import axios from "axios"
 import { supabase } from "../supabaseClient"
@@ -21,36 +22,46 @@ export default function AdminDashboard(){
   )
 }
 
-function useAuthConfig() {
-  return async () => {
+/** === Helper auth: attende il token e restituisce config axios con Authorization === */
+async function getAuthConfig(maxTries = 10, delayMs = 100) {
+  for (let i = 0; i < maxTries; i++) {
     const { data: { session } } = await supabase.auth.getSession()
-    const headers = { 'Content-Type': 'application/json' }
-    if (session?.access_token) headers.Authorization = `Bearer ${session.access_token}`
-    return { headers }
+    const token = session?.access_token
+    if (token) {
+      return { headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` } }
+    }
+    // attendo un attimo e riprovo (risolve la race all’apertura della pagina)
+    await new Promise(r => setTimeout(r, delayMs))
   }
+  // come fallback, niente header (il server risponderà 401)
+  return { headers: { 'Content-Type': 'application/json' } }
 }
 
+/** ====================== PRODotti ====================== */
 function ProductsAdmin(){
   const [items, setItems] = useState([])
   const [cats, setCats] = useState([])
   const [form, setForm] = useState({ title:'', description:'', price_eur:'', stock:0, is_active:true, category_id:'' })
-  const authConfig = useAuthConfig()
 
   const load = async () => {
-    const cfg = await authConfig()
-    const [resP, resC] = await Promise.all([
-      axios.get('/api/admin/products', cfg),
-      axios.get('/api/admin/categories', cfg)
-    ])
-    setItems(resP.data)
-    setCats(resC.data)
+    try {
+      const cfg = await getAuthConfig()
+      const [resP, resC] = await Promise.all([
+        axios.get('/api/admin/products', cfg),
+        axios.get('/api/admin/categories', cfg)
+      ])
+      setItems(resP.data)
+      setCats(resC.data)
+    } catch (e) {
+      alert('Errore caricamento prodotti/categorie: ' + (e?.response?.data?.error || e.message))
+    }
   }
   useEffect(()=>{ load() }, [])
 
   const create = async () => {
     try {
       if (!form.title) return alert('Titolo obbligatorio')
-      const cfg = await authConfig()
+      const cfg = await getAuthConfig()
       const payload = { ...form, price_eur: Number(form.price_eur || 0) }
       payload.category_id = form.category_id ? Number(form.category_id) : null
       await axios.post('/api/admin/products', payload, cfg)
@@ -64,7 +75,7 @@ function ProductsAdmin(){
 
   const uploadImages = async (p) => {
     try {
-      const cfg = await authConfig()
+      const cfg = await getAuthConfig()
       const bucket = 'uploads'
       const files = await pickFiles()
       for (const file of files) {
@@ -85,7 +96,7 @@ function ProductsAdmin(){
 
   const del = async (id) => {
     if(!confirm('Eliminare il prodotto e le sue immagini?')) return
-    const cfg = await authConfig()
+    const cfg = await getAuthConfig()
     await axios.delete(`/api/admin/products/${id}`, cfg)
     await load()
   }
@@ -152,15 +163,15 @@ function ProductsAdmin(){
   )
 }
 
+/** ====================== Categorie ====================== */
 function CategoriesAdmin(){
   const [items, setItems] = useState([])
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
-  const authConfig = useAuthConfig()
 
   const load = async () => {
     try {
-      const cfg = await authConfig()
+      const cfg = await getAuthConfig()
       const res = await axios.get('/api/admin/categories', cfg)
       setItems(res.data)
     } catch (e) {
@@ -171,7 +182,7 @@ function CategoriesAdmin(){
 
   const add = async () => {
     try {
-      const cfg = await authConfig()
+      const cfg = await getAuthConfig()
       await axios.post('/api/admin/categories', { name, description }, cfg)
       setName(''); setDescription('')
       await load()
@@ -181,7 +192,7 @@ function CategoriesAdmin(){
   }
   const del = async (id) => {
     try {
-      const cfg = await authConfig()
+      const cfg = await getAuthConfig()
       await axios.delete(`/api/admin/categories/${id}`, cfg)
       await load()
     } catch (e) {
@@ -215,17 +226,17 @@ function CategoriesAdmin(){
   )
 }
 
+/** ====================== Ordini ====================== */
 function OrdersAdmin(){
   const [items, setItems] = useState([])
   const [detail, setDetail] = useState(null)
-  const authConfig = useAuthConfig()
   const load = async () => {
-    const cfg = await authConfig()
+    const cfg = await getAuthConfig()
     const res = await axios.get('/api/admin/orders', cfg)
     setItems(res.data)
   }
   const open = async (id) => {
-    const cfg = await authConfig()
+    const cfg = await getAuthConfig()
     const res = await axios.get('/api/admin/orders/'+id, cfg)
     setDetail(res.data)
   }
@@ -268,19 +279,20 @@ function OrdersAdmin(){
   )
 }
 
+/** ====================== Sconti ====================== */
 function DiscountsAdmin(){
   const [items, setItems] = useState([])
   const [form, setForm] = useState({ code:'', percent_off:'', amount_off_cents:'', active:true })
-  const authConfig = useAuthConfig()
+
   const load = async () => {
-    const cfg = await authConfig()
+    const cfg = await getAuthConfig()
     const res = await axios.get('/api/admin/discounts', cfg)
     setItems(res.data)
   }
   useEffect(()=>{ load() }, [])
 
   const add = async () => {
-    const cfg = await authConfig()
+    const cfg = await getAuthConfig()
     const payload = { ...form }
     payload.percent_off = form.percent_off ? Number(form.percent_off) : null
     payload.amount_off_cents = form.amount_off_cents ? Number(form.amount_off_cents) : null
@@ -289,12 +301,12 @@ function DiscountsAdmin(){
     await load()
   }
   const toggle = async (d) => {
-    const cfg = await authConfig()
+    const cfg = await getAuthConfig()
     await axios.put(`/api/admin/discounts/${d.id}`, { active: !d.active }, cfg)
     await load()
   }
   const del = async (d) => {
-    const cfg = await authConfig()
+    const cfg = await getAuthConfig()
     await axios.delete(`/api/admin/discounts/${d.id}`, cfg)
     await load()
   }
@@ -339,6 +351,7 @@ function DiscountsAdmin(){
   )
 }
 
+/** Utility per file picker */
 async function pickFiles() {
   return new Promise((resolve) => {
     const input = document.createElement('input');
