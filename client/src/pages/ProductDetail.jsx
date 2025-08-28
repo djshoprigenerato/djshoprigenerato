@@ -1,88 +1,70 @@
-import { useEffect, useState } from "react"
-import { useParams, Link, useNavigate } from "react-router-dom"
-import axios from "axios"
-import { addToCart } from "../store/cartStore"
+// client/src/pages/ProductDetail.jsx
+import { useEffect, useState } from "react";
+import { useParams, Link, useNavigate } from "react-router-dom";
+import axios from "axios";
+import { addToCart } from "../store/cartStore";
 
-export default function ProductDetail(){
-  const { id } = useParams()
-  const nav = useNavigate()
-  const [prod, setProd] = useState(null)
-  const [sel, setSel]   = useState(0)
-  const [err, setErr]   = useState('')
+export default function ProductDetail() {
+  const { id } = useParams();
+  const nav = useNavigate();
+  const [p, setP] = useState(null);
 
-  useEffect(()=>{
-    (async ()=>{
-      try{
-        const res = await axios.get(`/api/shop/products/${id}`)
-        if (res.data?.error) throw new Error(res.data.error)
-        // payload coerente con shop.js: product_images[], price_cents
-        const p = res.data
-        setProd({
-          ...p,
-          images: Array.isArray(p.product_images) ? p.product_images.map(i => i?.url).filter(Boolean) : [],
-          priceEuro: typeof p.price_cents === 'number' ? p.price_cents/100 : (p.price ?? 0)
-        })
-        setSel(0)
-      }catch(e){ setErr(e.message) }
-    })()
-  },[id])
+  useEffect(() => {
+    (async () => {
+      const { data } = await axios.get(`/api/shop/products`, { params: { id } });
+      // Se l'endpoint non prevede ?id, fai una specifica GET /api/shop/products/:id
+      const item = Array.isArray(data) ? data.find(x => String(x.id) === String(id)) : data;
+      setP(item || null);
+    })();
+  }, [id]);
 
-  if (err) return <div className="container"><div className="card">Errore: {err}</div></div>
-  if (!prod) return <div className="container"><div className="card">Caricamento…</div></div>
-
-  const main = prod.images[sel] || ''
-
-  const handleAdd = () => {
-    addToCart({
-      id: prod.id,
-      title: prod.title,
-      image: main,
-      price: prod.priceEuro, // EURO
-    })
-    alert('Aggiunto al carrello')
+  if (!p) {
+    return (
+      <div className="container">
+        <button className="btn ghost" onClick={() => nav(-1)}>← Torna indietro</button>
+        <div className="card" style={{ marginTop: 12 }}>Caricamento…</div>
+      </div>
+    );
   }
+
+  const images = p.product_images?.length ? p.product_images : [{ url: '/placeholder.png' }];
+  const priceEUR = ((p.price_eur ?? (p.price_cents / 100)) || 0).toFixed(2);
 
   return (
     <div className="container">
-      <div className="card" style={{marginBottom:12}}>
-        <Link to="/prodotti" className="btn ghost">← Torna ai prodotti</Link>
-      </div>
+      <Link className="btn ghost" to="/prodotti">← Torna ai prodotti</Link>
 
-      <div className="grid" style={{gridTemplateColumns:'minmax(280px, 1.2fr) 1fr', gap:16}}>
-        {/* Galleria */}
-        <div className="card">
-          {main
-            ? <img src={main} className="product-img" alt={prod.title} style={{maxHeight:520, width:'100%', objectFit:'cover'}} />
-            : <span className="badge">Nessuna immagine</span>}
-          {prod.images.length > 1 && (
-            <div style={{display:'flex', gap:8, marginTop:10, flexWrap:'wrap'}}>
-              {prod.images.map((u, i)=>(
-                <img
-                  key={u+i}
-                  src={u}
-                  alt={`thumb-${i}`}
-                  onClick={()=>setSel(i)}
-                  style={{
-                    width:82, height:82, objectFit:'cover', borderRadius:8,
-                    border: i===sel ? '2px solid var(--primary)' : '1px solid var(--line)', cursor:'pointer'
-                  }}
-                />
+      <div className="card" style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 16, marginTop: 12 }}>
+        {/* Galleria immagini semplice */}
+        <div>
+          <div className="card" style={{ background: '#0b0f14' }}>
+            <img
+              className="product-img"
+              style={{ width: '100%', height: 'auto' }}
+              src={images[0].url}
+              alt={p.title}
+            />
+          </div>
+          {images.length > 1 && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(90px, 1fr))', gap: 8, marginTop: 8 }}>
+              {images.slice(1).map(img => (
+                <img key={img.id || img.url} src={img.url} alt="" style={{ width: '100%', aspectRatio: '1/1', objectFit: 'cover', borderRadius: 8, border: '1px solid var(--line)' }} />
               ))}
             </div>
           )}
         </div>
 
-        {/* Dati */}
+        {/* Dettagli */}
         <div className="card">
-          <h2 style={{marginTop:0}}>{prod.title}</h2>
-          <div className="price" style={{fontSize:22, margin:'6px 0'}}>{prod.priceEuro.toFixed(2)}€</div>
-          <p style={{whiteSpace:'pre-wrap', opacity:.9}}>{prod.description || '—'}</p>
-          <div style={{display:'flex', gap:8, marginTop:12}}>
-            <button className="btn" onClick={handleAdd}>Aggiungi al carrello</button>
-            <button className="btn ghost" onClick={()=>nav('/carrello')}>Vai al carrello</button>
+          <h2 style={{ marginTop: 0 }}>{p.title}</h2>
+          <div className="price" style={{ fontSize: 20, marginBottom: 8 }}>{priceEUR}€</div>
+          <div style={{ whiteSpace: 'pre-wrap', opacity: .9 }}>{p.description || '—'}</div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+            <button className="btn" onClick={() => addToCart(p, 1)}>Aggiungi al carrello</button>
+            <Link className="btn ghost" to="/carrello">Vai al carrello</Link>
           </div>
         </div>
       </div>
     </div>
-  )
+  );
 }
