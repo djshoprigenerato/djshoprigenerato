@@ -19,9 +19,14 @@ export default function Checkout(){
     setItems(getCart())
     ;(async()=>{
       const { data: { user } } = await supabase.auth.getUser()
-      if (user) setCustomer(c => ({
-        ...c, user_id: user.id, email: user.email, name: user.user_metadata?.name || ''
-      }))
+      if (user) {
+        setCustomer(c => ({
+          ...c,
+          user_id: user.id,
+          email: user.email || '',
+          name: user.user_metadata?.name || ''
+        }))
+      }
     })()
   },[])
 
@@ -60,13 +65,15 @@ export default function Checkout(){
   }, [total, discount])
 
   const pay = async () => {
+    if (!items.length) return alert('Il carrello è vuoto.')
     try {
       const cartPayload = items.map(i => ({
         id: i.id,
         title: i.title,
         qty: i.qty,
-        price_cents: i.price_cents,                // sempre in cent
-        image_url: i.product_images?.[0]?.url || ''
+        // sempre in centesimi
+        price_cents: Number(i.price_cents) || 0,
+        image_url: i.image_url || i.product_images?.[0]?.url || ''
       }))
 
       const res = await axios.post('/api/create-checkout-session', {
@@ -75,8 +82,8 @@ export default function Checkout(){
         discount   // lo stesso oggetto validato lato server
       })
       window.location.href = res.data.url
-    } catch {
-      alert('Errore nel creare la sessione di pagamento')
+    } catch (e) {
+      alert(e?.response?.data?.error || 'Errore nel creare la sessione di pagamento')
     }
   }
 
@@ -133,7 +140,7 @@ export default function Checkout(){
           <h3>Riepilogo</h3>
           <ul>
             {items.map(i => {
-              const unitEUR = ((i.price_eur ?? (i.price_cents/100))).toFixed(2)
+              const unitEUR = ((Number(i.price_cents) || 0) / 100).toFixed(2)
               return <li key={i.id}>{i.title} × {i.qty} — {unitEUR}€</li>
             })}
           </ul>
