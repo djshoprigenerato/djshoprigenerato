@@ -1,19 +1,18 @@
-
 import { useEffect, useState } from "react"
 import { supabase } from "../supabaseClient"
 import axios from "axios"
-import { Link } from "react-router-dom"
 
 export default function Orders(){
   const [orders, setOrders] = useState([])
 
   useEffect(()=>{
     (async()=>{
-      const { data: { user } } = await supabase.auth.getUser()
-      if(!user) return
-      // Use RLS: read only own orders via Supabase REST? For simplicity, we call server? We'll fetch via Supabase directly:
-      const { data, error } = await supabase.from('orders').select('id, created_at, status, total_cents').eq('user_id', user.id).order('id', {ascending:false})
-      if(!error) setOrders(data || [])
+      const { data: { session } } = await supabase.auth.getSession()
+      if(!session?.access_token) return
+      const res = await axios.get('/api/shop/my-orders', {
+        headers: { Authorization: `Bearer ${session.access_token}` }
+      })
+      setOrders(res.data || [])
     })()
   },[])
 
