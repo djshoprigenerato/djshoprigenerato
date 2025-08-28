@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react"
 import { getCart, cartTotalCents, clearCart } from "../store/cartStore"
 import axios from "axios"
@@ -24,7 +23,7 @@ export default function Checkout(){
   const applyDiscount = async () => {
     if(!discountCode) return
     try{
-      const res = await axios.get(`/api/discounts/${encodeURIComponent(discountCode)}`)
+      const res = await axios.get(`/api/shop/discounts/${encodeURIComponent(discountCode)}`)
       setDiscount(res.data)
     } catch(e){
       alert('Codice sconto non valido')
