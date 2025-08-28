@@ -14,6 +14,7 @@ import Payments from "./pages/Payments"
 import Shipping from "./pages/Shipping"
 import Login from "./pages/Login"
 import Register from "./pages/Register"
+import Terms from "./pages/Terms"
 
 function Footer() {
   return (
@@ -43,6 +44,7 @@ export default function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/registrati" element={<Register />} />
           <Route path="/admin" element={<AdminDashboard />} />
+          <Route path="/termini" element={<Terms/>} />
           <Route path="*" element={<div className="container"><h1>404</h1><p>Pagina non trovata</p></div>} />
         </Routes>
       </main>
