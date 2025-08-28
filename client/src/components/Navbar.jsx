@@ -7,18 +7,15 @@ export default function Navbar() {
   const [cartCount, setCartCount] = useState(0)
 
   useEffect(() => {
-    // carica utente all'avvio
     (async () => {
       const { data: { user } } = await supabase.auth.getUser()
       setUser(user)
     })()
 
-    // 🔔 ascolta i cambiamenti di autenticazione (login/logout)
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null)
     })
 
-    // aggiorna badge carrello
     const handler = () => {
       const raw = localStorage.getItem('cart') || '[]'
       setCartCount(JSON.parse(raw).reduce((n,i)=>n+i.qty,0))
