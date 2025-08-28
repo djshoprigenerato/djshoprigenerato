@@ -15,6 +15,8 @@ export default function ProductDetail(){
   },[id])
 
   if(!p) return <div className="container"><p>Caricamento...</p></div>
+  const price = (p.price_eur ?? ((p.price_cents||0)/100)).toFixed(2)
+
   return (
     <div className="container">
       <div className="card" style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:16}}>
@@ -28,7 +30,7 @@ export default function ProductDetail(){
           <h2>{p.title}</h2>
           <p style={{color:'var(--color-muted)'}}>{p.description}</p>
           <div style={{display:'flex', gap:10, alignItems:'center'}}>
-            <strong style={{color:'var(--color-primary)', fontSize:22}}>{(p.price_cents/100).toFixed(2)}€</strong>
+            <strong style={{color:'var(--color-primary)', fontSize:22}}>{price}€</strong>
             <button className="btn" onClick={()=>addToCart(p,1)}>Aggiungi al carrello</button>
           </div>
         </div>
