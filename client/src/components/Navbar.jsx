@@ -12,7 +12,10 @@ export default function Navbar(){
     return () => sub?.subscription?.unsubscribe?.()
   }, [])
 
-  const logout = async () => { await supabase.auth.signOut(); nav('/') }
+  const logout = async () => { 
+    await supabase.auth.signOut()
+    nav('/') 
+  }
 
   return (
     <nav className="navbar">
@@ -20,17 +23,25 @@ export default function Navbar(){
         <img src="/logo.png" alt="DJ Shop Rigenerato!" />
         <Link to="/">DJ Shop Rigenerato!</Link>
       </div>
-      <div className="right">
+      
+      {/* ⬇️ qui aggiunto display:flex + gap */}
+      <div className="right" style={{display:'flex', alignItems:'center', gap:16}}>
         <Link to="/prodotti">Prodotti</Link>
         <Link to="/carrello">Carrello</Link>
-        {user ? (<>
-          <Link to="/ordini">I miei ordini</Link>
-          <button className="btn ghost" onClick={logout}>Logout</button>
-          </>) : (<>
-          <Link to="/login">Accedi</Link>
-          <Link to="/registrati">Registrati</Link>
-          <Link to="/termini">Termini</Link>
-        </>)}
+
+        {user ? (
+          <>
+            <Link to="/ordini">I miei ordini</Link>
+            <button className="btn ghost" onClick={logout}>Logout</button>
+          </>
+        ) : (
+          <>
+            <Link to="/login">Accedi</Link>
+            <Link to="/registrati">Registrati</Link>
+            <Link to="/termini">Termini</Link>
+          </>
+        )}
+
         {/* Admin solo se role=admin */}
         {user?.app_metadata?.role === 'admin' && <Link to="/admin">Admin</Link>}
       </div>
