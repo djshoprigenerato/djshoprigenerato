@@ -4,8 +4,7 @@ import { supabaseAuth } from '../supabase.js'
 
 const router = express.Router()
 
-// ---- PRODOTTI PUBBLICI (lista) ----
-// NB: usiamo SOLO price_cents perché la colonna "price" non esiste nel tuo DB
+// ---- PRODOTTI PUBBLICI ----
 router.get('/products', async (req, res) => {
   try {
     const { q, category_id } = req.query
@@ -26,28 +25,6 @@ router.get('/products', async (req, res) => {
   }
 })
 
-// ---- DETTAGLIO PRODOTTO PUBBLICO ----
-// Anche qui solo price_cents (il frontend convertirà in euro)
-router.get('/products/:id', async (req, res) => {
-  try {
-    const id = Number(req.params.id)
-    if (!id) return res.status(400).json({ error: 'ID non valido' })
-
-    const { data, error } = await supabaseAuth
-      .from('products')
-      .select('id, title, description, price_cents, is_active, category_id, product_images (id, url)')
-      .eq('id', id)
-      .eq('is_active', true)
-      .maybeSingle()
-
-    if (error) throw error
-    if (!data) return res.status(404).json({ error: 'Prodotto non trovato' })
-    res.json(data)
-  } catch (e) {
-    res.status(500).json({ error: e.message })
-  }
-})
-
 // ---- CATEGORIE PUBBLICHE ----
 router.get('/categories', async (_req, res) => {
   try {
@@ -60,7 +37,7 @@ router.get('/categories', async (_req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
-// ---- PAGINE PUBBLICHE (Termini, ecc.) ----
+/** ============ PAGINE PUBBLICHE (Termini) ============ **/
 router.get('/pages/:slug', async (req, res) => {
   try {
     const { slug } = req.params
@@ -72,6 +49,34 @@ router.get('/pages/:slug', async (req, res) => {
     if (error) throw error
     res.json(data || { slug, title: 'Termini e Condizioni', content_html: '<p>Contenuto non ancora impostato.</p>' })
   } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+/** ============ SCONTI PUBBLICI ============ **/
+router.get('/discounts/:code', async (req, res) => {
+  try {
+    const code = (req.params.code || '').trim().toUpperCase()
+    if (!code) return res.status(404).json({ error: 'Codice non valido' })
+
+    const { data, error } = await supabaseAuth
+      .from('discounts')
+      .select('id, code, percent_off, amount_off_cents, is_active, valid_from, valid_to, min_order_cents')
+      .eq('code', code)
+      .eq('is_active', true)
+      .maybeSingle()
+
+    if (error) throw error
+    if (!data) return res.status(404).json({ error: 'Codice non trovato o inattivo' })
+
+    const now = new Date()
+    if (data.valid_from && new Date(data.valid_from) > now)
+      return res.status(404).json({ error: 'Codice non ancora attivo' })
+    if (data.valid_to && new Date(data.valid_to) < now)
+      return res.status(404).json({ error: 'Codice scaduto' })
+
+    res.json(data)
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
 })
 
 export default router
