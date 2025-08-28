@@ -1,92 +1,82 @@
 // client/src/store/cartStore.js
+const KEY = 'djcart:v1';
+const listeners = [];
 
-const KEY = 'djshop_cart_v1';
-
-// --- semplice event system per notificare cambi al carrello ---
-const listeners = new Set();
-function notify() {
-  const snapshot = getCart();
-  for (const cb of listeners) {
-    try { cb(snapshot); } catch {}
-  }
+function read() {
+  try { return JSON.parse(localStorage.getItem(KEY) || '[]'); }
+  catch { return []; }
 }
-export function onCartChanged(cb) {
-  listeners.add(cb);
-  return () => listeners.delete(cb);
-}
-
-// --- helpers di storage ---
-export function getCart() {
-  try {
-    return JSON.parse(localStorage.getItem(KEY)) || [];
-  } catch {
-    return [];
-  }
-}
-function save(cart) {
+function write(cart) {
   localStorage.setItem(KEY, JSON.stringify(cart));
-  notify();
-  return cart;
-}
-export function setCart(cart) {
-  return save(cart);
-}
-export function clearCart() {
-  return save([]);
+  listeners.forEach(fn => fn(cart));
 }
 
-// --- operazioni carrello ---
-export function addToCart(product, qty = 1) {
-  const cart = getCart();
-
-  const price_cents =
-    product.price_cents != null
-      ? Number(product.price_cents)
-      : Math.round(Number(product.price_eur || 0) * 100);
-
-  const itemBase = {
-    id: product.id,
-    title: product.title,
-    price_cents,
-    price_eur: price_cents / 100,            // comodo per UI
-    product_images: product.product_images || [],
-    qty: 0,
+export function onCartChanged(fn) {
+  listeners.push(fn);
+  return () => {
+    const i = listeners.indexOf(fn);
+    if (i >= 0) listeners.splice(i, 1);
   };
-
-  const i = cart.findIndex(x => x.id === product.id);
-  if (i >= 0) cart[i].qty += qty;
-  else cart.push({ ...itemBase, qty });
-
-  return save(cart);
 }
 
-export function updateQty(id, qty) {
+export function getCart() {
+  return read();
+}
+
+export function addToCart(product, qty = 1) {
+  const cart = read();
+
+  // Normalizza il prezzo: sempre in centesimi (intero)
+  const price_cents = Number.isFinite(product?.price_cents)
+    ? Number(product.price_cents)
+    : Math.round(Number(product?.price_eur ?? 0) * 100);
+
+  const image_url = product?.product_images?.[0]?.url || product?.image_url || '';
+
+  const idx = cart.findIndex(i => i.id === product.id);
+  if (idx >= 0) {
+    const current = cart[idx];
+    cart[idx] = {
+      ...current,
+      qty: current.qty + qty,
+      // tieni allineato il prezzo se è cambiato lato admin
+      price_cents
+    };
+  } else {
+    cart.push({
+      id: product.id,
+      title: product.title,
+      qty,
+      price_cents,
+      product_images: product.product_images || [],
+      image_url
+    });
+  }
+  write(cart);
+}
+
+export function setQty(id, qty) {
   const q = Math.max(1, Number(qty) || 1);
-  const cart = getCart().map(i => (i.id === id ? { ...i, qty: q } : i));
-  return save(cart);
+  const cart = read().map(i => i.id === id ? { ...i, qty: q } : i);
+  write(cart);
 }
-
-// alias per compatibilità con codice esistente
-export const setQty = updateQty;
 
 export function removeFromCart(id) {
-  const cart = getCart().filter(i => i.id !== id);
-  return save(cart);
+  write(read().filter(i => i.id !== id));
 }
 
-// --- totali ---
-export function cartTotalCents(items = getCart()) {
-  return items.reduce((sum, i) => {
-    const price_cents =
-      i.price_cents != null
-        ? Number(i.price_cents)
-        : Math.round(Number(i.price_eur || 0) * 100);
-    const qty = Number(i.qty || 1);
-    return sum + price_cents * qty;
+export function clearCart() {
+  write([]);
+}
+
+export function cartTotalCents(cart = read()) {
+  return (cart || []).reduce((sum, i) => {
+    const p = Number(i.price_cents) || 0;
+    const q = Number(i.qty) || 1;
+    return sum + p * q;
   }, 0);
 }
 
-// alias richiesto da alcune pagine (totale in euro)
-export function cartTotalEuro(items = getCart()) {
-  return cartTotalCents(items) / 100;
+export function cartTotalEuro(cart = read()) {
+  return (cartTotalCents(cart) / 100);
 }
