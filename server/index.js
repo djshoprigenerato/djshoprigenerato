@@ -1,39 +1,44 @@
+// server/index.js
+import express from 'express'
+import path from 'path'
 import { fileURLToPath } from 'url'
 import cors from 'cors'
 
-// Importa le route aggiornate
+// Route modules
 import adminRoutes from './routes/admin.js'
 import shopRoutes from './routes/shop.js'
 import stripeRoutes from './routes/stripe.js'
-@@ -13,25 +12,24 @@ const __dirname = path.dirname(__filename)
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
 
 const app = express()
-
-// Middleware base
 app.use(cors())
-app.use(express.json()) // per JSON body
 
-// Routes API
-// ATTENZIONE: il webhook Stripe usa raw body → è montato dentro stripeRoutes.
+/**
+ * Stripe webhook richiede il RAW body e va montato PRIMA del json parser.
+ * Dentro stripeRoutes usiamo qualcosa tipo:
+ *   router.post('/webhook', express.raw({ type: 'application/json' }), handler)
+ */
 app.use('/api', stripeRoutes)
 
-// JSON parser per tutte le altre API
+// Parser JSON per tutte le altre API
 app.use(express.json())
 
+// API applicative
 app.use('/api/admin', adminRoutes)
 app.use('/api/shop', shopRoutes)
-app.use('/api', stripeRoutes) // webhook Stripe incluso
 
-// Serve il frontend buildato (React)
+// Serviamo il build Vite
 const clientBuildPath = path.join(__dirname, '../client/dist')
 app.use(express.static(clientBuildPath))
 
-// Catch-all → React Router gestisce le route
-app.get('*', (req, res) => {
+// Catch-all per la SPA (React Router)
+app.get('*', (_req, res) => {
   res.sendFile(path.join(clientBuildPath, 'index.html'))
 })
 
-// Avvio server
 const PORT = process.env.PORT || 3000
 app.listen(PORT, () => {
   console.log(`✅ Server avviato su porta ${PORT}`)
+})
