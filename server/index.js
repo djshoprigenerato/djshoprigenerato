@@ -1,56 +1,74 @@
-// server/index.js
-import express from 'express'
-import path from 'path'
-import { fileURLToPath } from 'url'
-import cors from 'cors'
+:root{
+  --color-bg: #111418;
+  --color-card: #1b2026;
+  --color-primary: #ff8c1a;   /* arancio logo */
+  --color-secondary: #2ecc71; /* verde foglie */
+  --color-text: #f0e6d2;      /* avorio scritte */
+  --color-muted: #9aa3ad;
+  --radius-xl: 16px;
+  --radius: 10px;
+}
 
-import adminRoutes from './routes/admin.js'
-import shopRoutes from './routes/shop.js'
-import stripeRoutes from './routes/stripe.js'
+*{box-sizing:border-box}
+html,body,#root{height:100%}
+body{
+  margin:0;
+  background:var(--color-bg);
+  color:var(--color-text);
+  font: 16px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+}
 
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
+/* Layout */
+.container{max-width:1100px;margin:0 auto;padding:24px}
+.card{
+  background:var(--color-card);
+  border-radius:var(--radius-xl);
+  padding:16px;
+  box-shadow: 0 6px 18px rgba(0,0,0,.25);
+}
+.table{width:100%;border-collapse:collapse}
+.table th,.table td{padding:10px;border-bottom:1px solid #2a2f36}
 
-const app = express()
-app.disable('x-powered-by')
-app.use(cors())
+/* Navbar / Footer di base (se usi un componente dedicato, va comunque bene avere questi stili globali) */
+.navbar{display:flex;gap:16px;align-items:center;padding:10px 16px;background:#0f1317;border-bottom:1px solid #232a32;position:sticky;top:0;z-index:50}
+.navbar a{color:var(--color-text);text-decoration:none;opacity:.9}
+.navbar a:hover{opacity:1}
+.footer{padding:24px;text-align:center;color:var(--color-muted)}
 
-/**
- * 1) Webhook Stripe (usa RAW body) – montato PRIMA di qualsiasi json parser.
- *    Dentro stripeRoutes deve esserci:
- *      router.post('/webhook', express.raw({ type: 'application/json' }), handler)
- */
-app.use('/api', stripeRoutes)
+/* Buttons */
+.btn{
+  background:var(--color-primary);
+  color:#1b1106;
+  border:none;
+  border-radius:12px;
+  padding:8px 14px;
+  cursor:pointer;
+  font-weight:600;
+}
+.btn:hover{filter:brightness(1.05)}
+.btn.ghost{
+  background:transparent;
+  border:1px solid var(--color-primary);
+  color:var(--color-primary);
+}
+.btn.secondary{ background:var(--color-secondary); color:#0b2a17 }
 
-/** 2) Parser JSON per tutte le altre API */
-app.use(express.json())
+/* Inputs */
+input,select,textarea{
+  width:100%;
+  padding:10px 12px;
+  background:#0f1317;
+  color:var(--color-text);
+  border:1px solid #2a2f36;
+  border-radius:10px;
+}
+label{display:block;margin:10px 0 6px;color:var(--color-muted)}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 
-/** 3) API applicative */
-app.use('/api/admin', adminRoutes)
-app.use('/api/shop', shopRoutes)
+/* Product */
+.product-card{display:flex;flex-direction:column;gap:8px}
+.product-img{width:100%;border-radius:12px;border:1px solid #2a2f36;display:block;background:#0c0f12}
 
-/** 4) Static per la SPA (Vite build) */
-const clientBuildPath = path.join(__dirname, '../client/dist')
-
-// a) Monta esplicitamente /assets (css/js/img con cache lunga)
-app.use(
-  '/assets',
-  express.static(path.join(clientBuildPath, 'assets'), {
-    maxAge: '1y',
-    immutable: true
-  })
-)
-
-// b) Static root per index.html e altri file a root della build
-app.use(express.static(clientBuildPath))
-
-/** 5) Catch-all: tutte le altre GET tornano l'index della SPA */
-app.get('*', (_req, res) => {
-  res.sendFile(path.join(clientBuildPath, 'index.html'))
-})
-
-/** 6) Avvio server */
-const PORT = process.env.PORT || 3000
-app.listen(PORT, () => {
-  console.log(`✅ Server avviato su porta ${PORT}`)
-})
+/* Badges */
+.badge{display:inline-block;padding:4px 8px;border-radius:999px;background:#232a32;color:var(--color-muted);font-size:12px}
+.badge.free{background:var(--color-secondary);color:#062b15;font-weight:700}
