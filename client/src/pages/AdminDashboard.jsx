@@ -1,3 +1,4 @@
+// client/src/pages/AdminDashboard.jsx
 import { useEffect, useState } from "react"
 import axios from "axios"
 import { supabase } from "../supabaseClient"
@@ -150,9 +151,15 @@ function CategoriesAdmin(){
       setName(''); setDescription(''); await load()
     } catch (e) { alert('Errore creazione categoria: ' + (e?.response?.data?.error || e.message)) }
   }
+
   const del = async (id) => {
-    try { const cfg = await getAuthConfig(); await axios.delete(`/api/admin/categories/${id}`, cfg); await load() }
-    } catch (e) { alert('Errore eliminazione categoria: ' + (e?.response?.data?.error || e.message)) }
+    try {
+      const cfg = await getAuthConfig()
+      await axios.delete(`/api/admin/categories/${id}`, cfg)
+      await load()
+    } catch (e) {
+      alert('Errore eliminazione categoria: ' + (e?.response?.data?.error || e.message))
+    }
   }
 
   return (
