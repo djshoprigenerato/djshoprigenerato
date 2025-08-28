@@ -5,12 +5,13 @@ import { supabaseAuth } from '../supabase.js'
 const router = express.Router()
 
 // ---- PRODOTTI PUBBLICI (lista) ----
+// NB: usiamo SOLO price_cents perché la colonna "price" non esiste nel tuo DB
 router.get('/products', async (req, res) => {
   try {
     const { q, category_id } = req.query
     let query = supabaseAuth
       .from('products')
-      .select('id, title, description, price, price_cents, is_active, category_id, product_images (id, url)')
+      .select('id, title, description, price_cents, is_active, category_id, product_images (id, url)')
       .eq('is_active', true)
       .order('id', { ascending: false })
 
@@ -26,6 +27,7 @@ router.get('/products', async (req, res) => {
 })
 
 // ---- DETTAGLIO PRODOTTO PUBBLICO ----
+// Anche qui solo price_cents (il frontend convertirà in euro)
 router.get('/products/:id', async (req, res) => {
   try {
     const id = Number(req.params.id)
@@ -33,14 +35,13 @@ router.get('/products/:id', async (req, res) => {
 
     const { data, error } = await supabaseAuth
       .from('products')
-      .select('id, title, description, price, price_cents, is_active, category_id, product_images (id, url)')
+      .select('id, title, description, price_cents, is_active, category_id, product_images (id, url)')
       .eq('id', id)
       .eq('is_active', true)
       .maybeSingle()
 
     if (error) throw error
     if (!data) return res.status(404).json({ error: 'Prodotto non trovato' })
-
     res.json(data)
   } catch (e) {
     res.status(500).json({ error: e.message })
@@ -59,7 +60,7 @@ router.get('/categories', async (_req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
-/** ============ PAGINE PUBBLICHE (Termini) ============ **/
+// ---- PAGINE PUBBLICHE (Termini, ecc.) ----
 router.get('/pages/:slug', async (req, res) => {
   try {
     const { slug } = req.params
