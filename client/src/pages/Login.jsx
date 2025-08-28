@@ -13,14 +13,7 @@ export default function Login(){
       alert(error.message)
       return
     }
-
-    // 🔧 Refresh immediato dello stato utente dopo login
-    const { data: { user } } = await supabase.auth.getUser()
-    if (user) {
-      // salviamo il token/sessione in localStorage (gestito già da Supabase)
-      console.log("Login riuscito:", user.email)
-    }
-
+    await supabase.auth.getUser() // forza refresh stato
     nav('/')
   }
 
@@ -29,16 +22,9 @@ export default function Login(){
       <h1>Accedi</h1>
       <div className="card">
         <label>Email</label>
-        <input
-          value={email}
-          onChange={e => setEmail(e.target.value)}
-        />
+        <input value={email} onChange={e=>setEmail(e.target.value)} />
         <label>Password</label>
-        <input
-          type="password"
-          value={password}
-          onChange={e => setPassword(e.target.value)}
-        />
+        <input type="password" value={password} onChange={e=>setPassword(e.target.value)} />
         <button className="btn" onClick={signIn}>Login</button>
         <p>Non hai un account? <Link to="/registrati">Registrati</Link></p>
       </div>
