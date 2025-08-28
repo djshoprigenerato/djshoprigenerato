@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react"
 import axios from "axios"
 import { supabase } from "../supabaseClient"
@@ -22,52 +21,72 @@ export default function AdminDashboard(){
   )
 }
 
-function useAuthHeader(){
-  const [hdr, setHdr] = useState({})
-  useEffect(()=>{
-    (async()=>{
-      const { data: { session } } = await supabase.auth.getSession()
-      if(session?.access_token) setHdr({ headers: { Authorization: `Bearer ${session.access_token}` } })
-    })()
-  },[])
-  return hdr
+function useAuthConfig() {
+  return async () => {
+    const { data: { session } } = await supabase.auth.getSession()
+    const headers = { 'Content-Type': 'application/json' }
+    if (session?.access_token) headers.Authorization = `Bearer ${session.access_token}`
+    return { headers }
+  }
 }
 
 function ProductsAdmin(){
   const [items, setItems] = useState([])
-  const [form, setForm] = useState({ title:'', description:'', price_cents:0, stock:0, is_active:true, category_id:null })
-  const hdr = useAuthHeader()
+  const [cats, setCats] = useState([])
+  const [form, setForm] = useState({ title:'', description:'', price_eur:'', stock:0, is_active:true, category_id:'' })
+  const authConfig = useAuthConfig()
 
   const load = async () => {
-    const res = await axios.get('/api/admin/products', hdr)
-    setItems(res.data)
+    const cfg = await authConfig()
+    const [resP, resC] = await Promise.all([
+      axios.get('/api/admin/products', cfg),
+      axios.get('/api/admin/categories', cfg)
+    ])
+    setItems(resP.data)
+    setCats(resC.data)
   }
   useEffect(()=>{ load() }, [])
 
   const create = async () => {
-    const res = await axios.post('/api/admin/products', form, hdr)
-    setForm({ title:'', description:'', price_cents:0, stock:0, is_active:true, category_id:null })
-    await load()
-    alert('Prodotto creato. Ora carica le immagini.')
+    try {
+      if (!form.title) return alert('Titolo obbligatorio')
+      const cfg = await authConfig()
+      const payload = { ...form, price_eur: Number(form.price_eur || 0) }
+      payload.category_id = form.category_id ? Number(form.category_id) : null
+      await axios.post('/api/admin/products', payload, cfg)
+      setForm({ title:'', description:'', price_eur:'', stock:0, is_active:true, category_id:'' })
+      await load()
+      alert('Prodotto creato. Ora carica le immagini.')
+    } catch (e) {
+      alert('Errore creazione prodotto: ' + (e?.response?.data?.error || e.message))
+    }
   }
 
   const uploadImages = async (p) => {
-    const bucket = 'uploads'
-    const files = await pickFiles()
-    for (const file of files) {
-      const path = `${p.id}/${Date.now()}-${file.name}`
-      const { data, error } = await supabase.storage.from(bucket).upload(path, file)
-      if(!error) {
-        const { data: pub } = supabase.storage.from(bucket).getPublicUrl(path)
-        await axios.post(`/api/admin/products/${p.id}/images`, { path, url: pub.publicUrl }, hdr)
+    try {
+      const cfg = await authConfig()
+      const bucket = 'uploads'
+      const files = await pickFiles()
+      for (const file of files) {
+        const path = `${p.id}/${Date.now()}-${file.name}`
+        const { data, error } = await supabase.storage.from(bucket).upload(path, file)
+        if(!error) {
+          const { data: pub } = supabase.storage.from(bucket).getPublicUrl(path)
+          await axios.post(`/api/admin/products/${p.id}/images`, { path, url: pub.publicUrl }, cfg)
+        } else {
+          alert('Errore upload immagine: ' + error.message)
+        }
       }
+      await load()
+    } catch (e) {
+      alert('Errore caricamento immagini: ' + (e?.response?.data?.error || e.message))
     }
-    await load()
   }
 
   const del = async (id) => {
     if(!confirm('Eliminare il prodotto e le sue immagini?')) return
-    await axios.delete(`/api/admin/products/${id}`, hdr)
+    const cfg = await authConfig()
+    await axios.delete(`/api/admin/products/${id}`, cfg)
     await load()
   }
 
@@ -80,12 +99,14 @@ function ProductsAdmin(){
           <input value={form.title} onChange={e=>setForm({...form, title:e.target.value})}/>
         </div>
         <div>
-          <label>Prezzo (cent)</label>
-          <input type="number" value={form.price_cents} onChange={e=>setForm({...form, price_cents:Number(e.target.value)})}/>
+          <label>Prezzo (€)</label>
+          <input type="number" step="0.01" value={form.price_eur} onChange={e=>setForm({...form, price_eur:e.target.value})}/>
         </div>
       </div>
+
       <label>Descrizione</label>
       <textarea rows="3" value={form.description} onChange={e=>setForm({...form, description:e.target.value})}></textarea>
+
       <div className="form-row">
         <div>
           <label>Stock</label>
@@ -99,17 +120,25 @@ function ProductsAdmin(){
           </select>
         </div>
       </div>
-      <button className="btn" onClick={create}>Crea</button>
+
+      <label>Categoria</label>
+      <select value={form.category_id} onChange={e=>setForm({...form, category_id:e.target.value})}>
+        <option value="">— Seleziona categoria —</option>
+        {cats.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+      </select>
+
+      <button className="btn" style={{marginTop:10}} onClick={create}>Crea</button>
 
       <h3 style={{marginTop:20}}>Lista prodotti</h3>
       <table className="table">
-        <thead><tr><th>ID</th><th>Titolo</th><th>Prezzo</th><th>Immagini</th><th></th></tr></thead>
+        <thead><tr><th>ID</th><th>Titolo</th><th>Prezzo</th><th>Categoria</th><th>Immagini</th><th></th></tr></thead>
         <tbody>
           {items.map(p => (
             <tr key={p.id}>
               <td>#{p.id}</td>
               <td>{p.title}</td>
               <td>{(p.price_cents/100).toFixed(2)}€</td>
+              <td>{p.category_id || '-'}</td>
               <td>{p.product_images?.length||0}</td>
               <td style={{display:'flex', gap:8}}>
                 <button className="btn ghost" onClick={()=>uploadImages(p)}>Carica immagini</button>
@@ -126,34 +155,58 @@ function ProductsAdmin(){
 function CategoriesAdmin(){
   const [items, setItems] = useState([])
   const [name, setName] = useState('')
-  const hdr = useAuthHeader()
+  const [description, setDescription] = useState('')
+  const authConfig = useAuthConfig()
 
   const load = async () => {
-    const res = await axios.get('/api/admin/categories', hdr)
-    setItems(res.data)
+    try {
+      const cfg = await authConfig()
+      const res = await axios.get('/api/admin/categories', cfg)
+      setItems(res.data)
+    } catch (e) {
+      alert('Errore caricamento categorie: ' + (e?.response?.data?.error || e.message))
+    }
   }
   useEffect(()=>{ load() }, [])
 
   const add = async () => {
-    await axios.post('/api/admin/categories', { name }, hdr)
-    setName('')
-    await load()
+    try {
+      const cfg = await authConfig()
+      await axios.post('/api/admin/categories', { name, description }, cfg)
+      setName(''); setDescription('')
+      await load()
+    } catch (e) {
+      alert('Errore creazione categoria: ' + (e?.response?.data?.error || e.message))
+    }
   }
   const del = async (id) => {
-    await axios.delete(`/api/admin/categories/${id}`, hdr)
-    await load()
+    try {
+      const cfg = await authConfig()
+      await axios.delete(`/api/admin/categories/${id}`, cfg)
+      await load()
+    } catch (e) {
+      alert('Errore eliminazione categoria: ' + (e?.response?.data?.error || e.message))
+    }
   }
 
   return (
     <div className="card">
       <h3>Nuova categoria</h3>
-      <div style={{display:'flex', gap:8}}>
-        <input placeholder="Nome" value={name} onChange={e=>setName(e.target.value)} />
-        <button className="btn" onClick={add}>Crea</button>
+      <div className="form-row">
+        <div>
+          <label>Nome</label>
+          <input placeholder="Nome" value={name} onChange={e=>setName(e.target.value)} />
+        </div>
+        <div>
+          <label>Descrizione</label>
+          <input placeholder="Descrizione" value={description} onChange={e=>setDescription(e.target.value)} />
+        </div>
       </div>
+      <button className="btn" onClick={add}>Crea</button>
+
       <h3 style={{marginTop:20}}>Categorie</h3>
       <ul>
-        {(items||[]).map(c => <li key={c.id} style={{display:'flex', justifyContent:'space-between'}}>
+        {(items||[]).map(c => <li key={c.id} style={{display:'flex', justifyContent:'space-between', alignItems:'center', padding:'6px 0'}}>
           <span>#{c.id} {c.name}</span>
           <button className="btn ghost" onClick={()=>del(c.id)}>Elimina</button>
         </li>)}
@@ -162,17 +215,18 @@ function CategoriesAdmin(){
   )
 }
 
-
 function OrdersAdmin(){
   const [items, setItems] = useState([])
   const [detail, setDetail] = useState(null)
-  const hdr = useAuthHeader()
+  const authConfig = useAuthConfig()
   const load = async () => {
-    const res = await axios.get('/api/admin/orders', hdr)
+    const cfg = await authConfig()
+    const res = await axios.get('/api/admin/orders', cfg)
     setItems(res.data)
   }
   const open = async (id) => {
-    const res = await axios.get('/api/admin/orders/'+id, hdr)
+    const cfg = await authConfig()
+    const res = await axios.get('/api/admin/orders/'+id, cfg)
     setDetail(res.data)
   }
   useEffect(()=>{ load() }, [])
@@ -214,32 +268,34 @@ function OrdersAdmin(){
   )
 }
 
-
 function DiscountsAdmin(){
   const [items, setItems] = useState([])
   const [form, setForm] = useState({ code:'', percent_off:'', amount_off_cents:'', active:true })
-  const hdr = useAuthHeader()
+  const authConfig = useAuthConfig()
   const load = async () => {
-    const res = await axios.get('/api/admin/discounts', hdr)
+    const cfg = await authConfig()
+    const res = await axios.get('/api/admin/discounts', cfg)
     setItems(res.data)
   }
   useEffect(()=>{ load() }, [])
 
   const add = async () => {
+    const cfg = await authConfig()
     const payload = { ...form }
     payload.percent_off = form.percent_off ? Number(form.percent_off) : null
     payload.amount_off_cents = form.amount_off_cents ? Number(form.amount_off_cents) : null
-    await axios.post('/api/admin/discounts', payload, hdr)
+    await axios.post('/api/admin/discounts', payload, cfg)
     setForm({ code:'', percent_off:'', amount_off_cents:'', active:true })
     await load()
   }
-
   const toggle = async (d) => {
-    await axios.put(`/api/admin/discounts/${d.id}`, { active: !d.active }, hdr)
+    const cfg = await authConfig()
+    await axios.put(`/api/admin/discounts/${d.id}`, { active: !d.active }, cfg)
     await load()
   }
   const del = async (d) => {
-    await axios.delete(`/api/admin/discounts/${d.id}`, hdr)
+    const cfg = await authConfig()
+    await axios.delete(`/api/admin/discounts/${d.id}`, cfg)
     await load()
   }
 
