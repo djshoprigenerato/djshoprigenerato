@@ -1,21 +1,24 @@
-import { Link, useNavigate } from "react-router-dom"
-import { useEffect, useState } from "react"
-import { supabase } from "../supabaseClient"
+import { Link, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { supabase } from "../supabaseClient";
+import { getCartCount, onCartChanged } from "../store/cartStore";
 
 export default function Navbar(){
-  const [user, setUser] = useState(null)
-  const nav = useNavigate()
+  const [user, setUser] = useState(null);
+  const [count, setCount] = useState(getCartCount());
+  const nav = useNavigate();
 
   useEffect(()=>{
-    supabase.auth.getUser().then(({ data }) => setUser(data.user || null))
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, session)=> setUser(session?.user || null))
-    return () => sub?.subscription?.unsubscribe?.()
-  }, [])
+    supabase.auth.getUser().then(({ data }) => setUser(data.user || null));
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, session)=> setUser(session?.user || null));
+    const off = onCartChanged(({count}) => setCount(count));
+    return () => {
+      sub?.subscription?.unsubscribe?.();
+      off?.();
+    };
+  }, []);
 
-  const logout = async () => { 
-    await supabase.auth.signOut()
-    nav('/') 
-  }
+  const logout = async () => { await supabase.auth.signOut(); nav('/') }
 
   return (
     <nav className="navbar">
@@ -23,12 +26,9 @@ export default function Navbar(){
         <img src="/logo.png" alt="DJ Shop Rigenerato!" />
         <Link to="/">DJ Shop Rigenerato!</Link>
       </div>
-      
-      {/* ⬇️ qui aggiunto display:flex + gap */}
-      <div className="right" style={{display:'flex', alignItems:'center', gap:16}}>
+      <div className="right" style={{gap:12}}>
         <Link to="/prodotti">Prodotti</Link>
-        <Link to="/carrello">Carrello</Link>
-
+        <Link to="/carrello">Carrello{count ? ` (${count})` : ''}</Link>
         {user ? (
           <>
             <Link to="/ordini">I miei ordini</Link>
@@ -41,10 +41,8 @@ export default function Navbar(){
             <Link to="/termini">Termini</Link>
           </>
         )}
-
-        {/* Admin solo se role=admin */}
         {user?.app_metadata?.role === 'admin' && <Link to="/admin">Admin</Link>}
       </div>
     </nav>
-  )
+  );
 }
