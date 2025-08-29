@@ -1,69 +1,58 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom"
-import Navbar from "./components/Navbar"
+// client/src/App.jsx
+import React from "react";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 
-import Home from "./pages/Home"
-import Products from "./pages/Products"
-import ProductDetail from "./pages/ProductDetail"
-import CartPage from "./pages/CartPage"
-import Checkout from "./pages/Checkout"
-import Orders from "./pages/Orders"
-import AdminDashboard from "./pages/AdminDashboard"
-import About from "./pages/About"
-import Terms from "./pages/Terms"
-import Payments from "./pages/Payments"
-import Shipping from "./pages/Shipping"
-import Login from "./pages/Login"
-import Register from "./pages/Register"
-import Success from "./pages/Success";
-// ...
-<Route path="/success" element={<Success />} />
-
+import Navbar from "./components/Navbar";
 import Toast from "./components/Toast";
-// ...
-return (
-  <BrowserRouter>
-    <Navbar />
-    <Toast />
-    <Routes>
-      {/* ...le tue route... */}
-    </Routes>
-    <Footer />
-  </BrowserRouter>
-);
 
+// Pagine (adatta i percorsi ai tuoi file reali)
+import Home from "./pages/Home";
+import Products from "./pages/Products";
+import ProductDetail from "./pages/ProductDetail";
+import CartPage from "./pages/CartPage";
+import Checkout from "./pages/Checkout";
+import Login from "./pages/Login";
+import Register from "./pages/Register";
+import Terms from "./pages/Terms";
+import Orders from "./pages/Orders";           // "I miei ordini"
+import AdminDashboard from "./pages/AdminDashboard";
+import SuccessPage from "./pages/SuccessPage"; // pagina "grazie per l'acquisto"
+import CancelPage from "./pages/CancelPage";   // opzionale
 
-function Footer() {
-  return (
-    <footer className="footer container" style={{textAlign:'center', marginTop:24}}>
-      <p><strong>DJ Shop Rigenerato!</strong> — Re-mix, re-fix, re-use</p>
-      <p className="badge free">Consegna sempre gratuita con SDA e GLS</p>
-    </footer>
-  )
-}
-
-export default function App() {
+function App() {
   return (
     <BrowserRouter>
       <Navbar />
-      <main style={{minHeight: "70vh"}}>
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/prodotti" element={<Products />} />
-          <Route path="/prodotti/:id" element={<ProductDetail />} />
-          <Route path="/carrello" element={<CartPage />} />
-          <Route path="/checkout" element={<Checkout />} />
-          <Route path="/ordini" element={<Orders />} />
-          <Route path="/chi-siamo" element={<About />} />
-          <Route path="/termini" element={<Terms />} />
-          <Route path="/pagamenti" element={<Payments />} />
-          <Route path="/spedizione" element={<Shipping />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/registrati" element={<Register />} />
-          <Route path="/admin" element={<AdminDashboard />} />
-          <Route path="*" element={<div className="container"><h1>404</h1><p>Pagina non trovata</p></div>} />
-        </Routes>
-      </main>
-      <Footer />
+      <Routes>
+        <Route path="/" element={<Home />} />
+
+        {/* Prodotti */}
+        <Route path="/prodotti" element={<Products />} />
+        <Route path="/prodotti/:id" element={<ProductDetail />} />
+
+        {/* Carrello & Checkout */}
+        <Route path="/carrello" element={<CartPage />} />
+        <Route path="/checkout" element={<Checkout />} />
+
+        {/* Auth */}
+        <Route path="/login" element={<Login />} />
+        <Route path="/registrati" element={<Register />} />
+
+        {/* Varie */}
+        <Route path="/termini" element={<Terms />} />
+        <Route path="/ordini" element={<Orders />} />
+        <Route path="/admin" element={<AdminDashboard />} />
+
+        {/* Stripe return URLs */}
+        <Route path="/success" element={<SuccessPage />} />
+        <Route path="/cancel" element={<CancelPage />} />
+
+        {/* Fallback */}
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+      <Toast />
     </BrowserRouter>
-  )
+  );
 }
+
+export default App;
