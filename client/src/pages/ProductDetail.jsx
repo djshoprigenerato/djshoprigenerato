@@ -3,6 +3,14 @@ import { useEffect, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { addToCart } from "../store/cartStore";
+// ...
+<button className="btn" onClick={()=>{
+  addToCart(prod, 1);
+  window.dispatchEvent(new CustomEvent('toast', { detail: 'Aggiunto nel carrello' }));
+}}>
+  Aggiungi al carrello
+</button>
+
 
 export default function ProductDetail() {
   const { id } = useParams();
