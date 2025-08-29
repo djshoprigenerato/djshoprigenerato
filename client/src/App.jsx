@@ -14,6 +14,10 @@ import Payments from "./pages/Payments"
 import Shipping from "./pages/Shipping"
 import Login from "./pages/Login"
 import Register from "./pages/Register"
+import Success from "./pages/Success";
+// ...
+<Route path="/success" element={<Success />} />
+
 import Toast from "./components/Toast";
 // ...
 return (
