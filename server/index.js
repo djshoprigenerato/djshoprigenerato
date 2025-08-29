@@ -1,3 +1,4 @@
+// server/index.js
 import express from 'express'
 import path from 'path'
 import { fileURLToPath } from 'url'
@@ -12,26 +13,60 @@ const __dirname = path.dirname(__filename)
 
 const app = express()
 app.disable('x-powered-by')
-app.use(cors())
 
-// Stripe webhook (RAW body) inside stripeRoutes
+// Se stai dietro proxy (Render/Heroku/etc.)
+app.set('trust proxy', 1)
+
+// --- CORS (configurabile via env, default permissivo) ---
+const ALLOW_ORIGIN = process.env.CORS_ORIGIN || '*' // es. "https://www.djshoprigenerato.eu"
+app.use(
+  cors({
+    origin: ALLOW_ORIGIN,
+    credentials: false,
+  })
+)
+
+// --- Stripe routes (devono stare PRIMA del JSON parser) ---
+// All'interno di stripeRoutes il webhook usa express.raw(...)
 app.use('/api', stripeRoutes)
 
-// JSON parser for the rest
+// --- JSON parser per tutte le altre API ---
 app.use(express.json())
 
-// APIs
+// --- Rotte API applicative ---
 app.use('/api/admin', adminRoutes)
 app.use('/api/shop', shopRoutes)
 
-// Static client
-const clientBuildPath = path.join(__dirname, '../client/dist')
-app.use('/assets', express.static(path.join(clientBuildPath, 'assets'), { maxAge: '1y', immutable: true }))
-app.use(express.static(clientBuildPath))
+// Healthcheck semplice
+app.get('/api/health', (_req, res) => res.json({ ok: true }))
 
-// SPA catch-all
+// --- Static client build ---
+const clientBuildPath = path.join(__dirname, '../client/dist')
+
+// Cache forte per assets fingerprintati
+app.use(
+  '/assets',
+  express.static(path.join(clientBuildPath, 'assets'), {
+    immutable: true,
+    maxAge: '1y',
+    index: false,
+  })
+)
+
+// Altre statiche (es. favicon, logo, ecc.)
+app.use(express.static(clientBuildPath, { index: false }))
+
+// --- SPA catch-all: sempre index.html ---
+// Imposto no-cache per index.html così il browser prende sempre l’ultima build
 app.get('*', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store, max-age=0')
   res.sendFile(path.join(clientBuildPath, 'index.html'))
+})
+
+// --- Error handler API (non interferisce con SPA) ---
+app.use((err, _req, res, _next) => {
+  console.error('[server] Unhandled error:', err)
+  res.status(500).json({ error: 'Internal server error' })
 })
 
 const PORT = process.env.PORT || 3000
