@@ -1,6 +1,14 @@
 // client/src/components/ProductCard.jsx
 import { Link } from "react-router-dom";
 import { addToCart } from "../store/cartStore";
+// ...
+<button className="btn" onClick={()=>{
+  addToCart(p, 1);
+  window.dispatchEvent(new CustomEvent('toast', { detail: 'Aggiunto nel carrello' }));
+}}>
+  Aggiungi
+</button>
+
 
 export default function ProductCard({ p }) {
   const priceEUR = ((p.price_eur ?? (p.price_cents / 100)) || 0).toFixed(2);
