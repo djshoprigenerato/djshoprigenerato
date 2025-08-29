@@ -14,6 +14,19 @@ import Payments from "./pages/Payments"
 import Shipping from "./pages/Shipping"
 import Login from "./pages/Login"
 import Register from "./pages/Register"
+import Toast from "./components/Toast";
+// ...
+return (
+  <BrowserRouter>
+    <Navbar />
+    <Toast />
+    <Routes>
+      {/* ...le tue route... */}
+    </Routes>
+    <Footer />
+  </BrowserRouter>
+);
+
 
 function Footer() {
   return (
