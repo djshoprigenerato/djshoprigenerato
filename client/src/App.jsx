@@ -20,7 +20,7 @@ import Register from "./pages/Register";
 import Terms from "./pages/Terms";
 
 // ⚠️ Questi due file DEVONO esistere con questi nomi:
-import Success from "./pages/Success";        // file: client/src/pages/Success.jsx
+import Success from "./pages/SuccessPage";        // file: client/src/pages/Success.jsx
 import CancelPage from "./pages/CancelPage";  // file: client/src/pages/CancelPage.jsx
 
 /** Error boundary molto semplice per evitare “schermo nero” */
