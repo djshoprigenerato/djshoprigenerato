@@ -151,4 +151,26 @@ router.get('/discounts/:code', async (req, res) => {
   }
 })
 
+// ---- ORDINE PER STRIPE SESSION (per pagina Success) ----
+router.get('/orders/by-session/:sessionId', async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    if (!sessionId) return res.status(400).json({ error: 'session_id mancante' });
+
+    // NB: uso supabaseAdmin per bypassare RLS e restituire solo i campi necessari
+    const { data, error } = await supabaseAdmin
+      .from('orders')
+      .select('id, created_at, status, email, customer_name, total_cents, discount_code, stripe_session_id, items, shipping')
+      .eq('stripe_session_id', sessionId)
+      .maybeSingle();
+
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'Ordine non trovato' });
+
+    res.json(data);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 export default router
