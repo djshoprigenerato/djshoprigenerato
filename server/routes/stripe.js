@@ -6,47 +6,46 @@ import { supabaseAdmin } from '../supabase.js'
 const router = express.Router()
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-  apiVersion: '2024-06-20'
+  apiVersion: '2024-06-20',
 })
 
 const BASE_URL = process.env.PUBLIC_BASE_URL || 'http://localhost:3000'
 
 // ---------- CREATE CHECKOUT SESSION ----------
-router.post('/create-checkout-session', async (req, res) => {
+// IMPORTANTISSIMO: parser JSON SOLO per questa route
+router.post('/create-checkout-session', express.json(), async (req, res) => {
   try {
-    const { cart = [], customer, discount } = req.body
+    const body = req.body || {}
+    const { cart = [], customer, discount } = body
 
     if (!Array.isArray(cart) || cart.length === 0) {
       return res.status(400).json({ error: 'Carrello vuoto' })
     }
 
-    // Line items per Stripe, evitando immagini non valide
-    const line_items = cart.map(i => {
+    // Prepara line_items (filtra immagini non http/https)
+    const line_items = cart.map((i) => {
       const hasValidImage = i.image_url && /^https?:\/\//i.test(i.image_url)
       const price_cents = Number(i.price_cents)
-
-      const price_data = {
-        currency: 'eur',
-        product_data: {
-          name: i.title || `#${i.id}`,
-          ...(hasValidImage ? { images: [i.image_url] } : {}) // SOLO se URL assoluto
-        },
-        unit_amount: price_cents // intero in cent
-      }
-
       return {
         quantity: i.qty || 1,
-        price_data
+        price_data: {
+          currency: 'eur',
+          product_data: {
+            name: i.title || `#${i.id}`,
+            ...(hasValidImage ? { images: [i.image_url] } : {}),
+          },
+          unit_amount: price_cents,
+        },
       }
     })
 
-    // Sconto: creiamo un coupon "una tantum" su Stripe se presente
+    // Sconto una tantum su Stripe
     let discounts = []
     if (discount?.percent_off) {
       const coupon = await stripe.coupons.create({
         percent_off: Number(discount.percent_off),
         duration: 'once',
-        name: discount.code || 'Sconto'
+        name: discount.code || 'Sconto',
       })
       discounts = [{ coupon: coupon.id }]
     } else if (discount?.amount_off_cents) {
@@ -54,16 +53,15 @@ router.post('/create-checkout-session', async (req, res) => {
         amount_off: Number(discount.amount_off_cents),
         currency: 'eur',
         duration: 'once',
-        name: discount.code || 'Sconto'
+        name: discount.code || 'Sconto',
       })
       discounts = [{ coupon: coupon.id }]
     }
 
-    // Metadati per il webhook
     const metadata = {
       user_id: customer?.user_id || '',
       discount_code_id: discount?.id ? String(discount.id) : '',
-      cart_json: JSON.stringify(cart.slice(0, 50)) // limite difensivo
+      cart_json: JSON.stringify(cart.slice(0, 50)),
     }
 
     const session = await stripe.checkout.sessions.create({
@@ -74,12 +72,13 @@ router.post('/create-checkout-session', async (req, res) => {
       discounts,
       customer_email: customer?.email || undefined,
       metadata,
-      shipping_address_collection: { allowed_countries: ['IT','FR','ES','DE','AT','BE','NL'] },
+      shipping_address_collection: {
+        allowed_countries: ['IT', 'FR', 'ES', 'DE', 'AT', 'BE', 'NL'],
+      },
     })
 
     return res.json({ url: session.url })
   } catch (e) {
-    // Log esteso e messaggio chiaro al client
     console.error('create-checkout-session error:', e?.raw || e)
     const message = e?.raw?.message || e?.message || 'Errore generico Stripe'
     return res.status(400).json({ error: message })
@@ -87,6 +86,7 @@ router.post('/create-checkout-session', async (req, res) => {
 })
 
 // ---------- WEBHOOK ----------
+// RAW body SOLO per il webhook (deve rimanere così)
 router.post(
   '/webhooks/stripe',
   express.raw({ type: 'application/json' }),
@@ -116,25 +116,28 @@ router.post(
           payment_intent,
           amount_total,
           customer_details,
-          metadata
+          metadata,
         } = session
 
-        // Ricostruisci il carrello dai metadata
         let cart = []
         try {
           cart = JSON.parse(metadata?.cart_json || '[]')
         } catch {}
 
-        // Inserisci ORDINE
         const orderPayload = {
           user_id: metadata?.user_id || null,
           customer_email: customer_details?.email || null,
           customer_name: customer_details?.name || null,
-          shipping_address: customer_details?.address || null, // jsonb
+          shipping_address: customer_details?.address || null,
           status: 'paid',
           total_cents: amount_total || 0,
-          discount_code_id: metadata?.discount_code_id ? Number(metadata.discount_code_id) : null,
-          stripe_payment_intent_id: typeof payment_intent === 'string' ? payment_intent : (payment_intent?.id || null),
+          discount_code_id: metadata?.discount_code_id
+            ? Number(metadata.discount_code_id)
+            : null,
+          stripe_payment_intent_id:
+            typeof payment_intent === 'string'
+              ? payment_intent
+              : payment_intent?.id || null,
           stripe_session_id,
         }
 
@@ -146,14 +149,13 @@ router.post(
 
         if (orderErr) throw orderErr
 
-        // Inserisci RIGHE ORDINE
-        const itemsPayload = cart.map(i => ({
+        const itemsPayload = cart.map((i) => ({
           order_id: order.id,
           product_id: i.id,
           title: i.title || '',
           quantity: i.qty || 1,
           price_cents: Number(i.price_cents) || 0,
-          image_url: i.image_url || (i.product_images?.[0]?.url || '')
+          image_url: i.image_url || i.product_images?.[0]?.url || '',
         }))
 
         if (itemsPayload.length) {
@@ -166,11 +168,9 @@ router.post(
         console.log('✅ Ordine creato:', order.id, 'da session:', stripe_session_id)
       }
 
-      // Importante: sempre 200 OK o Stripe riprova
       res.json({ received: true })
     } catch (e) {
       console.error('Webhook handling error:', e)
-      // rispondiamo comunque 200 per evitare tempeste di retry
       res.status(200).json({ received: true })
     }
   }
