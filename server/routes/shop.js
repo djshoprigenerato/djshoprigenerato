@@ -90,3 +90,25 @@ router.get('/discounts/:code', async (req, res) => {
 })
 
 export default router
+
+// in fondo al tuo server/routes/shop.js
+router.get('/orders/by-session', async (req, res) => {
+  try {
+    const { session_id } = req.query
+    if (!session_id) return res.status(400).json({ error: 'session_id mancante' })
+
+    const { data: order, error } = await supabaseAuth
+      .from('orders')
+      .select(`
+        id, created_at, total_cents, status, customer_name, customer_email,
+        order_items ( product_id, title, quantity, price_cents, image_url )
+      `)
+      .eq('stripe_session_id', session_id)
+      .maybeSingle()
+
+    if (error) throw error
+    res.json(order) // può essere null se webhook non ha ancora scritto
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
