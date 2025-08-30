@@ -9,23 +9,28 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
   apiVersion: '2024-06-20',
 })
 
-const BASE_URL = process.env.PUBLIC_BASE_URL || 'https:djshoprigenerato.eu/SuccessPage.jsx'
+// Se impostato, lo usiamo. Altrimenti ricaviamo l'origin dalla request.
+function getBaseUrl(req) {
+  const envUrl = (process.env.PUBLIC_BASE_URL || '').trim()
+  if (envUrl && /^https?:\/\//i.test(envUrl)) return envUrl.replace(/\/+$/,'')
+  // X-Forwarded-* è presente su Render/Proxy
+  const proto = req.headers['x-forwarded-proto'] || req.protocol || 'https'
+  const host = req.headers['x-forwarded-host'] || req.headers.host
+  return `${proto}://${host}`
+}
 
 // ---------- CREATE CHECKOUT SESSION ----------
-// IMPORTANTISSIMO: parser JSON SOLO per questa route
 router.post('/create-checkout-session', express.json(), async (req, res) => {
   try {
-    const body = req.body || {}
-    const { cart = [], customer, discount } = body
+    const { cart = [], customer, discount } = req.body || {}
 
     if (!Array.isArray(cart) || cart.length === 0) {
       return res.status(400).json({ error: 'Carrello vuoto' })
     }
 
-    // Prepara line_items (filtra immagini non http/https)
+    // Line items (cent)
     const line_items = cart.map((i) => {
       const hasValidImage = i.image_url && /^https?:\/\//i.test(i.image_url)
-      const price_cents = Number(i.price_cents)
       return {
         quantity: i.qty || 1,
         price_data: {
@@ -34,7 +39,7 @@ router.post('/create-checkout-session', express.json(), async (req, res) => {
             name: i.title || `#${i.id}`,
             ...(hasValidImage ? { images: [i.image_url] } : {}),
           },
-          unit_amount: price_cents,
+          unit_amount: Number(i.price_cents),
         },
       }
     })
@@ -58,11 +63,14 @@ router.post('/create-checkout-session', express.json(), async (req, res) => {
       discounts = [{ coupon: coupon.id }]
     }
 
+    // Metadati per il webhook
     const metadata = {
       user_id: customer?.user_id || '',
       discount_code_id: discount?.id ? String(discount.id) : '',
       cart_json: JSON.stringify(cart.slice(0, 50)),
     }
+
+    const BASE_URL = getBaseUrl(req)
 
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
@@ -80,13 +88,11 @@ router.post('/create-checkout-session', express.json(), async (req, res) => {
     return res.json({ url: session.url })
   } catch (e) {
     console.error('create-checkout-session error:', e?.raw || e)
-    const message = e?.raw?.message || e?.message || 'Errore generico Stripe'
-    return res.status(400).json({ error: message })
+    return res.status(400).json({ error: e?.raw?.message || e?.message || 'Errore' })
   }
 })
 
 // ---------- WEBHOOK ----------
-// RAW body SOLO per il webhook (deve rimanere così)
 router.post(
   '/webhooks/stripe',
   express.raw({ type: 'application/json' }),
@@ -120,10 +126,9 @@ router.post(
         } = session
 
         let cart = []
-        try {
-          cart = JSON.parse(metadata?.cart_json || '[]')
-        } catch {}
+        try { cart = JSON.parse(metadata?.cart_json || '[]') } catch {}
 
+        // ORDINE
         const orderPayload = {
           user_id: metadata?.user_id || null,
           customer_email: customer_details?.email || null,
@@ -131,13 +136,9 @@ router.post(
           shipping_address: customer_details?.address || null,
           status: 'paid',
           total_cents: amount_total || 0,
-          discount_code_id: metadata?.discount_code_id
-            ? Number(metadata.discount_code_id)
-            : null,
+          discount_code_id: metadata?.discount_code_id ? Number(metadata.discount_code_id) : null,
           stripe_payment_intent_id:
-            typeof payment_intent === 'string'
-              ? payment_intent
-              : payment_intent?.id || null,
+            typeof payment_intent === 'string' ? payment_intent : payment_intent?.id || null,
           stripe_session_id,
         }
 
@@ -149,6 +150,7 @@ router.post(
 
         if (orderErr) throw orderErr
 
+        // RIGHE ORDINE
         const itemsPayload = cart.map((i) => ({
           order_id: order.id,
           product_id: i.id,
@@ -165,13 +167,14 @@ router.post(
           if (itemsErr) throw itemsErr
         }
 
-        console.log('✅ Ordine creato:', order.id, 'da session:', stripe_session_id)
+        console.log('✅ Ordine creato:', order.id, 'session:', stripe_session_id)
       }
 
       res.json({ received: true })
     } catch (e) {
       console.error('Webhook handling error:', e)
-      res.status(200).json({ received: true })
+      // Manteniamo 200 per evitare retry loop
+      res.json({ received: true })
     }
   }
 )
