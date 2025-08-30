@@ -9,7 +9,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
   apiVersion: '2024-06-20',
 })
 
-const BASE_URL = process.env.PUBLIC_BASE_URL || 'http://localhost:3000'
+const BASE_URL = process.env.PUBLIC_BASE_URL || 'https:djshoprigenerato.eu/SuccessPage.jsx'
 
 // ---------- CREATE CHECKOUT SESSION ----------
 // IMPORTANTISSIMO: parser JSON SOLO per questa route
