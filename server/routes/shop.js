@@ -3,7 +3,7 @@ import { supabaseAuth } from '../supabase.js'
 
 const router = express.Router()
 
-// ---- PRODOTTI PUBBLICI ----
+// ---- PRODOTTI PUBBLICI (lista/filtri) ----
 router.get('/products', async (req, res) => {
   try {
     const { q, category_id, id } = req.query
@@ -27,6 +27,36 @@ router.get('/products', async (req, res) => {
 
     const { data, error } = await query
     if (error) throw error
+    res.json(data)
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// ---- DETTAGLIO PRODOTTO PUBBLICO ----
+router.get('/products/:id', async (req, res) => {
+  try {
+    const prodId = Number(req.params.id)
+    if (!prodId) return res.status(400).json({ error: 'ID non valido' })
+
+    const { data, error } = await supabaseAuth
+      .from('products')
+      .select(`
+        id,
+        title,
+        description,
+        price_cents,
+        is_active,
+        category_id,
+        product_images (id, url)
+      `)
+      .eq('id', prodId)
+      .eq('is_active', true)
+      .maybeSingle()
+
+    if (error) throw error
+    if (!data) return res.status(404).json({ error: 'Prodotto non trovato' })
+
     res.json(data)
   } catch (e) {
     res.status(500).json({ error: e.message })
@@ -83,9 +113,7 @@ router.get('/discounts/:code', async (req, res) => {
 
     if (error) throw error
     if (!data) {
-      return res
-        .status(404)
-        .json({ error: 'Codice sconto non trovato o non attivo' })
+      return res.status(404).json({ error: 'Codice sconto non trovato o non attivo' })
     }
 
     return res.json(data)
