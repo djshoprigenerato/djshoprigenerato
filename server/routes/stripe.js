@@ -1,191 +1,166 @@
 // server/routes/stripe.js
-import express from "express";
-import Stripe from "stripe";
-import { supabaseAdmin } from "../supabase.js";
+import express from 'express'
+import Stripe from 'stripe'
+import { supabaseAdmin } from '../supabase.js'
 
-const router = express.Router();
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+const router = express.Router()
 
-// Questo router è montato PRIMA del body parser globale.
-// Attivo express.json SOLO per le route NON webhook.
-router.use((req, res, next) => {
-  if (req.originalUrl === "/webhooks/stripe") return next();
-  return express.json()(req, res, next);
-});
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
+  apiVersion: '2024-06-20'
+})
 
-/**
- * Utility: calcola l'URL assoluto del frontend (production + dev).
- * FRONTEND_URL può essere definita su Render (consigliato).
- */
-function getFrontendBase(req) {
-  if (process.env.FRONTEND_URL) return process.env.FRONTEND_URL.replace(/\/+$/, "");
-  const proto = (req.headers["x-forwarded-proto"] || "https");
-  const host = req.headers.host;
-  return `${proto}://${host}`;
-}
+const BASE_URL = process.env.PUBLIC_BASE_URL || 'http://localhost:3000'
 
-/**
- * Crea la checkout session.
- * Body atteso: { cart:[{id,title,qty,price_cents,image_url}], customer:{...}, discount?:{id,percent_off,amount_off_cents} }
- */
-router.post("/create-checkout-session", async (req, res) => {
+// ---------- CREATE CHECKOUT SESSION ----------
+router.post('/create-checkout-session', async (req, res) => {
   try {
-    const { cart = [], customer = {}, discount = null } = req.body;
+    const { cart = [], customer, discount } = req.body
 
     if (!Array.isArray(cart) || cart.length === 0) {
-      return res.status(400).json({ error: "Carrello vuoto" });
+      return res.status(400).json({ error: 'Carrello vuoto' })
     }
 
-    const line_items = cart.map((i) => ({
-      quantity: Number(i.qty) || 1,
+    // Line items in Stripe (in centesimi)
+    const line_items = cart.map(i => ({
+      quantity: i.qty || 1,
       price_data: {
-        currency: "eur",
-        unit_amount: Number(i.price_cents), // importo pieno
-        product_data: {
-          name: i.title || `Prodotto #${i.id}`,
-          metadata: { product_id: String(i.id) }
-        }
+        currency: 'eur',
+        product_data: { name: i.title || `#${i.id}`, images: i.image_url ? [i.image_url] : [] },
+        unit_amount: Number(i.price_cents) // SEMPRE cent
       }
-    }));
+    }))
 
-    // Applico lo sconto IN STRIPE (così il totale corrisponde anche lì).
-    // Creo un coupon "usa-e-getta" e lo attacco alla sessione.
-    let discounts = [];
-    if (discount && (discount.percent_off || discount.amount_off_cents)) {
-      const couponPayload = { duration: "once" };
-      if (discount.percent_off) couponPayload.percent_off = Number(discount.percent_off);
-      if (discount.amount_off_cents) {
-        couponPayload.amount_off = Number(discount.amount_off_cents);
-        couponPayload.currency = "eur";
-      }
-      const coupon = await stripe.coupons.create(couponPayload);
-      discounts = [{ coupon: coupon.id }];
+    // Se esiste uno sconto, creiamo un coupon Stripe “una tantum”
+    let discounts = []
+    if (discount?.percent_off) {
+      const coupon = await stripe.coupons.create({
+        percent_off: Number(discount.percent_off),
+        duration: 'once',
+        name: discount.code
+      })
+      discounts = [{ coupon: coupon.id }]
+    } else if (discount?.amount_off_cents) {
+      const coupon = await stripe.coupons.create({
+        amount_off: Number(discount.amount_off_cents),
+        currency: 'eur',
+        duration: 'once',
+        name: discount.code
+      })
+      discounts = [{ coupon: coupon.id }]
     }
 
-    const base = getFrontendBase(req);
+    // Metadati per il webhook
+    const metadata = {
+      user_id: customer?.user_id || '',
+      discount_code_id: discount?.id ? String(discount.id) : '',
+      cart_json: JSON.stringify(cart.slice(0, 50)) // limite difensivo
+    }
+
     const session = await stripe.checkout.sessions.create({
-      mode: "payment",
-      payment_method_types: ["card"],
-      customer_email: customer.email || undefined,
+      mode: 'payment',
+      success_url: `${BASE_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${BASE_URL}/cancel`,
       line_items,
       discounts,
-      success_url: `${base}/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${base}/cancel`,
-      metadata: {
-        user_id: customer.user_id || "",
-        discount_code_id: discount?.id ? String(discount.id) : "",
-        cart: JSON.stringify(cart.slice(0, 100)) // salvo il carrello per il webhook
-      }
-    });
+      customer_email: customer?.email || undefined,
+      metadata,
+      shipping_address_collection: { allowed_countries: ['IT','FR','ES','DE','AT','BE','NL'] },
+    })
 
-    return res.json({ url: session.url });
+    return res.json({ url: session.url })
   } catch (e) {
-    console.error("create-checkout-session error:", e);
-    return res.status(500).json({ error: e.message || "Errore Stripe" });
+    console.error('create-checkout-session error:', e)
+    res.status(500).json({ error: e.message })
   }
-});
+})
 
-/**
- * Webhook Stripe (RAW body!).
- * Su evento "checkout.session.completed" salva orders + order_items.
- */
+// ---------- WEBHOOK ----------
 router.post(
-  "/webhooks/stripe",
-  express.raw({ type: "application/json" }),
+  '/webhooks/stripe',
+  express.raw({ type: 'application/json' }),
   async (req, res) => {
-    let event;
+    const sig = req.headers['stripe-signature']
+    let event
     try {
-      const sig = req.headers["stripe-signature"];
       event = stripe.webhooks.constructEvent(
         req.body,
         sig,
         process.env.STRIPE_WEBHOOK_SECRET
-      );
+      )
     } catch (err) {
-      console.error("⚠️  Webhook signature verification failed.", err.message);
-      return res.status(400).send(`Webhook Error: ${err.message}`);
+      console.error('Webhook signature verification failed:', err?.message)
+      return res.status(400).send(`Bad signature: ${err.message}`)
     }
 
-    if (event.type === "checkout.session.completed") {
-      try {
-        const session = event.data.object;
+    try {
+      if (event.type === 'checkout.session.completed') {
+        const session = await stripe.checkout.sessions.retrieve(
+          event.data.object.id,
+          { expand: ['line_items', 'customer_details'] }
+        )
 
-        const user_id =
-          (session.metadata && session.metadata.user_id) || null;
-        const discount_code_id =
-          session.metadata?.discount_code_id
-            ? Number(session.metadata.discount_code_id)
-            : null;
+        const {
+          id: stripe_session_id,
+          payment_intent,
+          amount_total,
+          customer_details,
+          metadata
+        } = session
 
-        let cart = [];
+        // Ricostruisci il carrello dai metadata (affidabile per i nostri id)
+        let cart = []
         try {
-          cart = JSON.parse(session.metadata?.cart || "[]");
-        } catch {
-          cart = [];
+          cart = JSON.parse(metadata?.cart_json || '[]')
+        } catch {}
+
+        // Inserisci ORDINE
+        const orderPayload = {
+          user_id: metadata?.user_id || null,
+          customer_email: customer_details?.email || null,
+          customer_name: customer_details?.name || null,
+          shipping_address: customer_details?.address || null, // jsonb
+          status: 'paid',
+          total_cents: amount_total || 0,
+          discount_code_id: metadata?.discount_code_id ? Number(metadata.discount_code_id) : null,
+          stripe_payment_intent_id: typeof payment_intent === 'string' ? payment_intent : (payment_intent?.id || null),
+          stripe_session_id,
         }
 
-        const { data: order, error } = await supabaseAdmin
-          .from("orders")
-          .insert({
-            user_id,
-            customer_email:
-              session.customer_details?.email || session.customer_email || null,
-            customer_name: session.customer_details?.name || null,
-            shipping_address: session.customer_details?.address || null,
-            status: "paid",
-            total_cents: session.amount_total || null,
-            discount_code_id,
-            stripe_payment_intent_id: session.payment_intent || null,
-            stripe_session_id: session.id
-          })
-          .select()
-          .single();
+        const { data: order, error: orderErr } = await supabaseAdmin
+          .from('orders')
+          .insert(orderPayload)
+          .select('id')
+          .single()
 
-        if (error) throw error;
+        if (orderErr) throw orderErr
 
-        // Inserisco le righe
-        if (order && Array.isArray(cart)) {
-          const rows = cart.map((i) => ({
-            order_id: order.id,
-            product_id: i.id,
-            title: i.title || "",
-            quantity: Number(i.qty) || 1,
-            price_cents: Number(i.price_cents) || 0,
-            image_url: i.image_url || (i.product_images?.[0]?.url || null)
-          }));
+        // Inserisci RIGHE ORDINE
+        const itemsPayload = cart.map(i => ({
+          order_id: order.id,
+          product_id: i.id,
+          title: i.title || '',
+          quantity: i.qty || 1,
+          price_cents: Number(i.price_cents) || 0,
+          image_url: i.image_url || (i.product_images?.[0]?.url || '')
+        }))
+
+        if (itemsPayload.length) {
           const { error: itemsErr } = await supabaseAdmin
-            .from("order_items")
-            .insert(rows);
-          if (itemsErr) throw itemsErr;
+            .from('order_items')
+            .insert(itemsPayload)
+          if (itemsErr) throw itemsErr
         }
-      } catch (e) {
-        console.error("Webhook handling error:", e);
-        // Non ritentiamo: ma logghiamo per diagnosi
+
+        console.log('✅ Ordine creato:', order.id, 'da session:', stripe_session_id)
       }
+
+      // Importante: sempre 200 OK o Stripe riprova
+      res.json({ received: true })
+    } catch (e) {
+      console.error('Webhook handling error:', e)
+      res.status(200).json({ received: true }) // non far fallire per evitare tempeste di retry
     }
-
-    return res.json({ received: true });
   }
-);
+)
 
-/**
- * Restituisce l'ordine (con items) partendo dalla session_id Stripe.
- * Usata dalla SuccessPage per mostrare/stampare il riepilogo.
- */
-router.get("/orders/by-session", async (req, res) => {
-  try {
-    const { session_id } = req.query;
-    if (!session_id) return res.status(400).json({ error: "Missing session_id" });
-    const { data, error } = await supabaseAdmin
-      .from("orders")
-      .select("*, order_items(*)")
-      .eq("stripe_session_id", session_id)
-      .maybeSingle();
-    if (error) throw error;
-    return res.json(data || null);
-  } catch (e) {
-    return res.status(500).json({ error: e.message });
-  }
-});
-
-export default router;
+export default router
