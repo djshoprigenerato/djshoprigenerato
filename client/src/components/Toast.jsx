@@ -1,30 +1,24 @@
-import { useEffect, useState } from "react";
+// client/src/components/Toast.jsx
+import { useEffect, useState } from "react"
 
 export default function Toast(){
-  const [msg, setMsg] = useState("");
-  const [show, setShow] = useState(false);
+  const [msg, setMsg] = useState("")
 
   useEffect(()=>{
-    const handler = (e) => {
-      const text = (e?.detail || "").toString();
-      if(!text) return;
-      setMsg(text);
-      setShow(true);
-      clearTimeout(window.__toastTO);
-      window.__toastTO = setTimeout(()=> setShow(false), 1800);
-    };
-    window.addEventListener("toast", handler);
-    return () => window.removeEventListener("toast", handler);
-  }, []);
+    const on = (e) => {
+      setMsg(String(e.detail || ""))
+      setTimeout(()=> setMsg(""), 2200)
+    }
+    window.addEventListener('toast', on)
+    return () => window.removeEventListener('toast', on)
+  }, [])
 
+  if (!msg) return null
   return (
     <div style={{
       position:'fixed', right:16, bottom:16, zIndex:9999,
-      transition:'transform .2s ease, opacity .2s ease',
-      transform: show ? 'translateY(0)' : 'translateY(10px)',
-      opacity: show ? 1 : 0
-    }}>
-      <div className="card" style={{padding:'10px 14px'}}>{msg}</div>
-    </div>
-  );
+      background:'var(--panel)', color:'var(--text)', border:'1px solid var(--line)',
+      padding:'10px 14px', borderRadius:12, boxShadow:'var(--shadow)'
+    }}>{msg}</div>
+  )
 }
