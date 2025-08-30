@@ -1,122 +1,104 @@
 // client/src/pages/SuccessPage.jsx
-import { useEffect, useState } from "react";
-import { useSearchParams, Link } from "react-router-dom";
-import axios from "axios";
-import { clearCart } from "../store/cartStore";
+import { useEffect, useState, useMemo } from "react"
+import { useSearchParams, Link } from "react-router-dom"
+import axios from "axios"
+import { clearCart } from "../store/cartStore"
 
-export default function SuccessPage() {
-  const [params] = useSearchParams();
-  const sessionId = params.get("session_id");
-  const [order, setOrder] = useState(null);
-  const [loading, setLoading] = useState(!!sessionId);
-  const [error, setError] = useState("");
+export default function SuccessPage(){
+  const [params] = useSearchParams()
+  const session_id = params.get('session_id')
+  const [order, setOrder] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [tries, setTries] = useState(0)
 
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      if (!sessionId) return;
+  // Poll dell'ordine finché non esiste (max ~30s)
+  useEffect(()=>{
+    let timer
+    async function tick(){
       try {
-        const { data } = await axios.get("/api/orders/by-session", {
-          params: { session_id: sessionId }
-        });
-        if (!mounted) return;
-        if (data?.status === "paid") {
-          setOrder(data);
-          clearCart(); // svuota il carrello SOLO quando l’ordine è effettivamente salvato
-        } else {
-          setError("Ordine non ancora disponibile. Riprova tra qualche secondo.");
+        const { data } = await axios.get('/api/shop/orders/by-session', { params: { session_id } })
+        if (data && data.id){
+          setOrder(data)
+          setLoading(false)
+          // svuota il carrello una sola volta quando l'ordine è confermato
+          clearCart()
+          return
         }
-      } catch (e) {
-        setError(e?.response?.data?.error || e.message);
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    })();
-    return () => (mounted = false);
-  }, [sessionId]);
+      } catch {}
+      // riprova fino a 15 volte (ogni 2s)
+      setTries(t => t+1)
+      timer = setTimeout(tick, 2000)
+    }
+    if (session_id) tick()
+    return () => clearTimeout(timer)
+  }, [session_id])
 
-  if (!sessionId) {
+  const totalEUR = useMemo(()=> (order?.total_cents ?? 0) / 100, [order])
+
+  if (!session_id){
     return (
       <div className="container">
-        <div className="card">
-          <h2>Pagamento ricevuto</h2>
-          <p>Manca l’identificativo della sessione.</p>
+        <div className="card"><h2>Pagamento ricevuto</h2>
+          <p>Session ID mancante.</p>
           <Link to="/" className="btn">Torna alla home</Link>
         </div>
       </div>
-    );
+    )
   }
 
-  if (loading) {
+  // Messaggio di attesa finché il webhook non ha scritto l’ordine
+  if (loading && !order){
     return (
       <div className="container">
         <div className="card">
           <h2>Pagamento ricevuto</h2>
-          <p>Sto preparando il riepilogo…</p>
+          <p>Ordine non ancora disponibile. Riprova tra qualche secondo…</p>
+          <Link to="/ordini" className="btn ghost">I miei ordini</Link>
+          <Link to="/" className="btn" style={{marginLeft:8}}>Torna alla home</Link>
         </div>
       </div>
-    );
+    )
   }
 
-  if (!order) {
-    return (
-      <div className="container">
-        <div className="card">
-          <h2>Pagamento ricevuto</h2>
-          <p>Non riusciamo a mostrare il riepilogo: {error || "ordine non trovato"}.</p>
-          <p>Puoi controllarlo in <Link to="/ordini">i miei ordini</Link>.</p>
-          <Link to="/" className="btn">Torna alla home</Link>
-        </div>
-      </div>
-    );
-  }
-
-  const total = (order.total_cents / 100).toFixed(2);
-
+  // Riepilogo stampabile
   return (
     <div className="container">
       <div className="card">
-        <h1>Grazie per il tuo acquisto!</h1>
+        <h2>Grazie per il tuo acquisto!</h2>
         <p>Il tuo ordine è stato ricevuto e verrà elaborato a breve.</p>
 
-        <div style={{margin:"12px 0"}}>
-          <span className="badge">Riferimento pagamento: {order.stripe_session_id}</span>
+        <div style={{margin:'16px 0'}}>
+          <div className="badge">Ordine #{order.id}</div>{' '}
+          <div className="badge">Totale: {totalEUR.toFixed(2)}€</div>{' '}
+          <div className="badge">{new Date(order.created_at).toLocaleString()}</div>
         </div>
 
-        <h3>Riepilogo ordine</h3>
         <table className="table">
           <thead>
-            <tr>
-              <th>Prodotto</th>
-              <th>Q.tà</th>
-              <th>Prezzo</th>
-              <th>Subtotale</th>
-            </tr>
+            <tr><th>Prodotto</th><th>Q.tà</th><th>Prezzo</th><th>Subtotale</th></tr>
           </thead>
           <tbody>
-            {order.order_items?.map((it) => {
-              const price = (it.price_cents / 100).toFixed(2);
-              const sub = ((it.price_cents * it.quantity) / 100).toFixed(2);
+            {order.order_items?.map((r, idx) => {
+              const eur = (r.price_cents/100).toFixed(2)
+              const sub = ((r.price_cents*r.quantity)/100).toFixed(2)
               return (
-                <tr key={it.id}>
-                  <td>{it.title}</td>
-                  <td>{it.quantity}</td>
-                  <td>{price}€</td>
+                <tr key={idx}>
+                  <td>{r.title}</td>
+                  <td>{r.quantity}</td>
+                  <td>{eur}€</td>
                   <td>{sub}€</td>
                 </tr>
-              );
+              )
             })}
           </tbody>
         </table>
 
-        <h2 style={{textAlign:"right"}}>Totale: {total}€</h2>
-
-        <div style={{display:"flex", gap:8, marginTop:12}}>
-          <button className="btn ghost" onClick={()=>window.print()}>Stampa riepilogo</button>
-          <Link className="btn" to="/ordini">Vai a “I miei ordini”</Link>
-          <Link className="btn ghost" to="/">Torna alla home</Link>
+        <div style={{display:'flex', gap:8, marginTop:16}}>
+          <button className="btn" onClick={()=>window.print()}>Stampa</button>
+          <Link to="/ordini" className="btn ghost">I miei ordini</Link>
+          <Link to="/" className="btn" style={{marginLeft:'auto'}}>Torna alla home</Link>
         </div>
       </div>
     </div>
-  );
+  )
 }
