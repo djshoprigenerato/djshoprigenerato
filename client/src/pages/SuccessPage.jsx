@@ -1,104 +1,145 @@
 // client/src/pages/SuccessPage.jsx
-import { useEffect, useState, useMemo } from "react"
-import { useSearchParams, Link } from "react-router-dom"
-import axios from "axios"
-import { clearCart } from "../store/cartStore"
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
+import axios from "axios";
+import { clearCart } from "../store/cartStore";
 
-export default function SuccessPage(){
-  const [params] = useSearchParams()
-  const session_id = params.get('session_id')
-  const [order, setOrder] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [tries, setTries] = useState(0)
+export default function SuccessPage() {
+  const [params] = useSearchParams();
+  const sessionId = params.get("session_id") || "";
+  const [order, setOrder] = useState(null);
+  const [status, setStatus] = useState("loading"); // loading | notfound | ready
+  const cleared = useRef(false);
 
-  // Poll dell'ordine finché non esiste (max ~30s)
-  useEffect(()=>{
-    let timer
-    async function tick(){
+  // polling: proviamo per ~60s finché il webhook ha scritto l'ordine
+  useEffect(() => {
+    let timer;
+    let attempts = 0;
+
+    async function fetchOrder() {
       try {
-        const { data } = await axios.get('/api/shop/orders/by-session', { params: { session_id } })
-        if (data && data.id){
-          setOrder(data)
-          setLoading(false)
-          // svuota il carrello una sola volta quando l'ordine è confermato
-          clearCart()
-          return
+        const { data } = await axios.get(`/api/shop/orders/by-session/${encodeURIComponent(sessionId)}`);
+        setOrder(data);
+        setStatus("ready");
+
+        // svuota carrello una sola volta quando l'ordine è confermato
+        if (!cleared.current) {
+          clearCart();
+          cleared.current = true;
         }
-      } catch {}
-      // riprova fino a 15 volte (ogni 2s)
-      setTries(t => t+1)
-      timer = setTimeout(tick, 2000)
+      } catch (e) {
+        attempts += 1;
+        if (e?.response?.status === 404) {
+          // non ancora disponibile: ritenta fino a 60s
+          if (attempts < 20) {
+            timer = setTimeout(fetchOrder, 3000);
+          } else {
+            setStatus("notfound");
+          }
+        } else {
+          setStatus("notfound");
+        }
+      }
     }
-    if (session_id) tick()
-    return () => clearTimeout(timer)
-  }, [session_id])
 
-  const totalEUR = useMemo(()=> (order?.total_cents ?? 0) / 100, [order])
+    if (sessionId) fetchOrder();
+    else setStatus("notfound");
 
-  if (!session_id){
-    return (
-      <div className="container">
-        <div className="card"><h2>Pagamento ricevuto</h2>
-          <p>Session ID mancante.</p>
-          <Link to="/" className="btn">Torna alla home</Link>
-        </div>
-      </div>
-    )
-  }
+    return () => clearTimeout(timer);
+  }, [sessionId]);
 
-  // Messaggio di attesa finché il webhook non ha scritto l’ordine
-  if (loading && !order){
+  const totalEUR = useMemo(() => {
+    if (!order) return "0.00";
+    return (order.total_cents / 100).toFixed(2);
+  }, [order]);
+
+  if (status === "loading") {
     return (
       <div className="container">
         <div className="card">
           <h2>Pagamento ricevuto</h2>
-          <p>Ordine non ancora disponibile. Riprova tra qualche secondo…</p>
-          <Link to="/ordini" className="btn ghost">I miei ordini</Link>
-          <Link to="/" className="btn" style={{marginLeft:8}}>Torna alla home</Link>
+          <p>Stiamo preparando il riepilogo dell’ordine…</p>
         </div>
       </div>
-    )
+    );
   }
 
-  // Riepilogo stampabile
+  if (status === "notfound") {
+    return (
+      <div className="container">
+        <div className="card">
+          <h2>Pagamento ricevuto</h2>
+          <p>Non riusciamo a mostrare il riepilogo: ordine non ancora disponibile. Riprova tra qualche secondo.</p>
+          <p>Puoi controllarlo in <Link to="/ordini">i miei ordini</Link>.</p>
+          <Link className="btn" to="/">Torna alla home</Link>
+        </div>
+      </div>
+    );
+  }
+
+  // --- stato READY: riepilogo stampabile
   return (
     <div className="container">
       <div className="card">
         <h2>Grazie per il tuo acquisto!</h2>
-        <p>Il tuo ordine è stato ricevuto e verrà elaborato a breve.</p>
+        <p>Ordine #{order.id} del {new Date(order.created_at).toLocaleString()}</p>
 
-        <div style={{margin:'16px 0'}}>
-          <div className="badge">Ordine #{order.id}</div>{' '}
-          <div className="badge">Totale: {totalEUR.toFixed(2)}€</div>{' '}
-          <div className="badge">{new Date(order.created_at).toLocaleString()}</div>
+        <div style={{marginTop: 12}}>
+          <strong>Intestatario</strong><br/>
+          {order.customer_name || "-"}<br/>
+          {order.customer_email || "-"}
         </div>
 
+        {order.shipping_address && (
+          <div style={{marginTop: 12}}>
+            <strong>Indirizzo di spedizione</strong><br/>
+            {order.shipping_address.line1 || ""} {order.shipping_address.line2 || ""}<br/>
+            {order.shipping_address.postal_code || ""} {order.shipping_address.city || ""} ({order.shipping_address.state || ""})<br/>
+            {order.shipping_address.country || ""}
+          </div>
+        )}
+
+        <h3 style={{marginTop: 20}}>Articoli</h3>
         <table className="table">
           <thead>
             <tr><th>Prodotto</th><th>Q.tà</th><th>Prezzo</th><th>Subtotale</th></tr>
           </thead>
           <tbody>
-            {order.order_items?.map((r, idx) => {
-              const eur = (r.price_cents/100).toFixed(2)
-              const sub = ((r.price_cents*r.quantity)/100).toFixed(2)
+            {(order.items || []).map((it, idx) => {
+              const unit = (it.price_cents / 100).toFixed(2);
+              const sub = ((it.price_cents * it.quantity) / 100).toFixed(2);
               return (
                 <tr key={idx}>
-                  <td>{r.title}</td>
-                  <td>{r.quantity}</td>
-                  <td>{eur}€</td>
+                  <td>{it.title}</td>
+                  <td>{it.quantity}</td>
+                  <td>{unit}€</td>
                   <td>{sub}€</td>
                 </tr>
-              )
+              );
             })}
           </tbody>
         </table>
 
+        {order.discount && (
+          <p className="badge">
+            Sconto applicato: <strong>{order.discount.code}</strong>{" "}
+            {order.discount.percent_off ? `(-${order.discount.percent_off}%)` : ""}
+            {order.discount.amount_off_cents ? ` (-${(order.discount.amount_off_cents/100).toFixed(2)}€)` : ""}
+          </p>
+        )}
+
+        <h2 style={{marginTop: 10}}>Totale: {totalEUR}€</h2>
+
         <div style={{display:'flex', gap:8, marginTop:16}}>
-          <button className="btn" onClick={()=>window.print()}>Stampa</button>
-          <Link to="/ordini" className="btn ghost">I miei ordini</Link>
-          <Link to="/" className="btn" style={{marginLeft:'auto'}}>Torna alla home</Link>
+          <button className="btn ghost" onClick={()=>window.print()}>Stampa</button>
+          <Link className="btn" to="/ordini">I miei ordini</Link>
+          <Link className="btn ghost" to="/">Torna alla home</Link>
         </div>
+
+        <p style={{marginTop:12, fontSize:12, opacity:.7}}>
+          Riferimento pagamento: {new URLSearchParams(window.location.search).get('session_id')}
+        </p>
       </div>
     </div>
-  )
+  );
 }
