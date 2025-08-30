@@ -1,59 +1,38 @@
-// client/src/store/cartStore.js
-const KEY = 'cart_v1';
+const KEY = 'djshop_cart';
 
 function read() {
-  try { return JSON.parse(localStorage.getItem(KEY)) || []; }
-  catch { return []; }
+  try { return JSON.parse(localStorage.getItem(KEY) || '[]'); } catch { return []; }
 }
-function write(cart) {
-  localStorage.setItem(KEY, JSON.stringify(cart));
-  emit();
-}
+function write(v) { localStorage.setItem(KEY, JSON.stringify(v)); dispatch(); }
 
-export function getCart() { return read(); }
+let subs = [];
+function dispatch(){ subs.forEach(fn => fn()); }
 
-export function getCartCount(cart = read()) {
-  return cart.reduce((s, i) => s + Number(i.qty || 0), 0);
+export function subscribeCart(fn){
+  subs.push(fn);
+  return () => { subs = subs.filter(s => s !== fn); };
 }
 
-export function cartTotalCents(cart = read()) {
-  return cart.reduce((s, i) => s + (Number(i.price_cents || 0) * Number(i.qty || 0)), 0);
+export function getCart(){ return read(); }
+export function cartCount(){ return read().reduce((a,b)=> a + (Number(b.qty)||0), 0); }
+export function cartTotalCents(items = read()){
+  return items.reduce((sum, i)=> sum + (Number(i.price_cents||0) * Number(i.qty||0)), 0);
 }
 
-export function addToCart(item, qty = 1) {
+export function addToCart(item){
   const cart = read();
-  const idx = cart.findIndex(x => x.id === item.id);
-  if (idx >= 0) cart[idx].qty = Number(cart[idx].qty || 0) + qty;
-  else cart.push({
-    id: item.id,
-    title: item.title,
-    price_cents: Number(item.price_cents || 0),
-    qty,
-    image_url: item.image_url || item.product_images?.[0]?.url || ''
-  });
+  const idx = cart.findIndex(i => i.id === item.id);
+  if (idx >= 0) cart[idx].qty += (item.qty || 1);
+  else cart.push({...item, qty: item.qty || 1});
   write(cart);
+  try { window.dispatchEvent(new CustomEvent('toast', { detail: 'Aggiunto al carrello' })); } catch {}
 }
-
-export function setQty(id, qty) {
-  const cart = read().map(i => i.id === id ? { ...i, qty: Math.max(1, Number(qty)||1) } : i);
-  write(cart);
-}
-
-export function removeFromCart(id) {
-  const cart = read().filter(i => i.id !== id);
-  write(cart);
-}
-
-function emit() {
+export function setQty(id, qty){
   const cart = read();
-  const detail = { cart, count: getCartCount(cart), totalCents: cartTotalCents(cart) };
-  window.dispatchEvent(new CustomEvent('cart:changed', { detail }));
+  const idx = cart.findIndex(i => i.id === id);
+  if (idx >= 0) { cart[idx].qty = Math.max(1, Number(qty)||1); write(cart); }
 }
-
-export function onCartChanged(cb) {
-  const h = (e) => cb(e.detail);
-  window.addEventListener('cart:changed', h);
-  // subito un primo push con lo stato attuale
-  h({ cart: read(), count: getCartCount(), totalCents: cartTotalCents() });
-  return () => window.removeEventListener('cart:changed', h);
+export function removeFromCart(id){
+  write(read().filter(i => i.id !== id));
 }
+export function clearCart(){ write([]); }
