@@ -1,131 +1,79 @@
-import { useEffect, useMemo, useState } from "react";
-import { useSearchParams, Link } from "react-router-dom";
-import axios from "axios";
-import { clearCart } from "../store/cartStore";
+// client/src/pages/SuccessPage.jsx
+import { useEffect, useState } from "react"
+import { useSearchParams, Link } from "react-router-dom"
+import axios from "axios"
+import { clearCart } from "../store/cartStore"
 
-export default function SuccessPage() {
-  const [params] = useSearchParams();
-  const sessionId = params.get("session_id");
-  const [order, setOrder] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState("");
+export default function SuccessPage(){
+  const [params] = useSearchParams()
+  const sessionId = params.get("session_id")
+  const [order, setOrder] = useState(null)
+  const [error, setError] = useState("")
 
-  useEffect(() => {
-    let cancelled = false;
+  useEffect(()=>{
+    // Svuota il carrello (l'ordine è completato)
+    clearCart()
+    window.dispatchEvent(new CustomEvent('toast', { detail: 'Pagamento riuscito: carrello svuotato' }))
 
-    async function load() {
-      if (!sessionId) {
-        setErr("Session id mancante");
-        setLoading(false);
-        return;
+    if (!sessionId) return
+    ;(async ()=>{
+      try{
+        const { data } = await axios.get(`/api/orders/by-session/${encodeURIComponent(sessionId)}`)
+        setOrder(data)
+      } catch(e){
+        setError(e?.response?.data?.error || e.message)
       }
-      try {
-        const { data } = await axios.get(`/api/shop/orders/by-session/${encodeURIComponent(sessionId)}`);
-        if (!cancelled) {
-          setOrder(data);
-          setLoading(false);
+    })()
+  },[sessionId])
 
-          // Svuota il carrello localmente solo quando l'ordine è confermato lato server
-          clearCart(); // (aggiorna anche il badge del carrello con evento)
-        }
-      } catch (e) {
-        if (!cancelled) {
-          setErr(e?.response?.data?.error || "Ordine non trovato");
-          setLoading(false);
-        }
-      }
-    }
-
-    load();
-    return () => { cancelled = true; }
-  }, [sessionId]);
-
-  const euro = (cents) => ((Number(cents || 0) / 100).toFixed(2) + "€");
-
-  const total = useMemo(() => order?.total_cents ?? 0, [order]);
-
-  if (loading) {
+  if (!sessionId){
     return (
       <div className="container">
-        <div className="card">Elaborazione pagamento…</div>
+        <div className="card"><h2>Manca il riferimento del pagamento</h2></div>
       </div>
-    );
-  }
-
-  if (err) {
-    return (
-      <div className="container">
-        <div className="card">
-          <h2>Pagamento ricevuto</h2>
-          <p>Non riusciamo a mostrare il riepilogo: {err}.</p>
-          <p>
-            Puoi controllare in <Link to="/ordini">I miei ordini</Link>.
-          </p>
-          <Link className="btn" to="/">Torna alla home</Link>
-        </div>
-      </div>
-    );
+    )
   }
 
   return (
     <div className="container">
       <div className="card">
-        <h2>Grazie per il tuo acquisto!</h2>
-        <p>Il tuo ordine è stato ricevuto e verrà elaborato a breve.</p>
-        <p className="badge">Riferimento pagamento: {order?.stripe_session_id}</p>
+        <h2>Pagamento ricevuto</h2>
+        {order ? (
+          <>
+            <p>ID ordine: <code>#{order.id}</code></p>
+            <p>Importo pagato: <strong>{(order.total_cents/100).toFixed(2)}€</strong></p>
+            <p>Intestato a: {order.customer_name || '-'} &lt;{order.customer_email || '-'}&gt;</p>
+            <p>Pagamento: <code>{order.stripe_payment_intent}</code></p>
 
-        {/* Riepilogo stampabile */}
-        <div style={{marginTop:16}}>
-          <h3>Riepilogo ordine</h3>
-          <p><strong>Data:</strong> {new Date(order?.created_at).toLocaleString()}</p>
-          <p><strong>Email:</strong> {order?.email || "-"}</p>
-          {order?.shipping?.name && <p><strong>Nome:</strong> {order.shipping.name}</p>}
-          {order?.shipping?.address && (
-            <p>
-              <strong>Spedizione:</strong>{" "}
-              {[
-                order.shipping.address.line1,
-                order.shipping.address.line2,
-                order.shipping.address.postal_code,
-                order.shipping.address.city,
-                order.shipping.address.state,
-                order.shipping.address.country
-              ].filter(Boolean).join(", ")}
-            </p>
-          )}
+            {order.order_items?.length > 0 && (
+              <table className="table" style={{marginTop: 12}}>
+                <thead>
+                  <tr><th>Prodotto</th><th>Q.tà</th><th>Prezzo</th></tr>
+                </thead>
+                <tbody>
+                  {order.order_items.map((it, idx)=>(
+                    <tr key={idx}>
+                      <td>{it.title}</td>
+                      <td>{it.quantity}</td>
+                      <td>{(it.price_cents/100).toFixed(2)}€</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
 
-          <table className="table" style={{marginTop:12}}>
-            <thead>
-              <tr>
-                <th>Prodotto</th>
-                <th style={{width:80, textAlign:'right'}}>Q.tà</th>
-                <th style={{width:140, textAlign:'right'}}>Importo</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(order?.items || []).map((li, i) => (
-                <tr key={i}>
-                  <td>{li.description}</td>
-                  <td style={{textAlign:'right'}}>{li.quantity}</td>
-                  <td style={{textAlign:'right'}}>{euro(li.amount_total)}</td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr>
-                <td colSpan={2} style={{textAlign:'right', fontWeight:700}}>Totale</td>
-                <td style={{textAlign:'right', fontWeight:700}}>{euro(total)}</td>
-              </tr>
-            </tfoot>
-          </table>
-
-          <div style={{display:'flex', gap:8, marginTop:16}}>
-            <button className="btn secondary" onClick={()=>window.print()}>Stampa ricevuta</button>
-            <Link className="btn ghost" to="/ordini">I miei ordini</Link>
-            <Link className="btn" to="/">Torna alla home</Link>
-          </div>
-        </div>
+            <div style={{display:'flex', gap:8, marginTop:12}}>
+              <button className="btn" onClick={()=>window.print()}>Stampa</button>
+              <Link className="btn ghost" to="/ordini">I miei ordini</Link>
+            </div>
+          </>
+        ) : (
+          <>
+            <p>Non riusciamo a mostrare il riepilogo: <code>{error || 'in attesa di conferma'}</code>.</p>
+            <p>Puoi controllarlo tra poco in <Link to="/ordini">i miei ordini</Link>.</p>
+          </>
+        )}
       </div>
     </div>
-  );
+  )
 }
