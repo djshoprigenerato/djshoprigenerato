@@ -6,10 +6,24 @@ const STORAGE_KEY = 'cart_v1'
 let cart = []
 let listeners = new Set()
 
+function emitBrowserEvent() {
+  // utile per componenti che ascoltano via window.addEventListener('cart:changed', ...)
+  if (typeof window !== 'undefined') {
+    try {
+      window.dispatchEvent(
+        new CustomEvent('cart:changed', {
+          detail: { items: getCart(), count: cartCount() }
+        })
+      )
+    } catch {}
+  }
+}
+
 function notify() {
   for (const cb of listeners) {
     try { cb(getCart()) } catch {}
   }
+  emitBrowserEvent()
 }
 
 // Carica dal localStorage (solo in browser)
@@ -22,6 +36,7 @@ function loadCart() {
     cart = []
   }
 }
+
 function saveCart() {
   if (typeof window === 'undefined') return
   try {
@@ -38,12 +53,14 @@ export function getCart() {
 
 /**
  * Aggiunge un prodotto al carrello.
- * Accetta un oggetto prodotto con almeno: id, title, price_cents (o price_eur), product_images[].
+ * Richiede: { id, title, price_cents (o price_eur), product_images? }
  */
 export function addToCart(product, qty = 1) {
-  if (!product || !product.id) return
+  if (!product || product.id == null) return
 
   if (!cart.length && typeof window !== 'undefined') loadCart()
+
+  const q = Math.max(1, Number(qty || 1))
 
   // normalizza prezzo in centesimi
   let price_cents = 0
@@ -52,14 +69,14 @@ export function addToCart(product, qty = 1) {
 
   const idx = cart.findIndex(i => i.id === product.id)
   if (idx >= 0) {
-    cart[idx].qty += qty
+    cart[idx].qty = Math.max(1, Number((cart[idx].qty || 0) + q))
   } else {
     cart.push({
       id: product.id,
       title: product.title || '',
-      qty: qty,
+      qty: q,
       price_cents,
-      // lasciamo anche un alias price_eur per la UI (solo comodo, il valore "vero" è price_cents)
+      // Alias comodo per la UI; la logica deve usare sempre price_cents
       price_eur: price_cents / 100,
       product_images: product.product_images || [],
     })
@@ -72,10 +89,11 @@ export function setQty(id, qty) {
   if (!cart.length && typeof window !== 'undefined') loadCart()
   const idx = cart.findIndex(i => i.id === id)
   if (idx < 0) return
-  if (qty <= 0) {
+  const q = Number(qty)
+  if (!Number.isFinite(q) || q <= 0) {
     cart.splice(idx, 1)
   } else {
-    cart[idx].qty = qty
+    cart[idx].qty = Math.max(1, Math.floor(q))
   }
   saveCart()
 }
@@ -94,17 +112,17 @@ export function clearCart() {
 /** Numero totale di pezzi nel carrello */
 export function cartCount() {
   if (!cart.length && typeof window !== 'undefined') loadCart()
-  return cart.reduce((n, i) => n + (i.qty || 0), 0)
+  return cart.reduce((n, i) => n + (Number(i.qty) || 0), 0)
 }
 
 /** Totale in centesimi. Se passi items li usa, altrimenti lo stato interno */
 export function cartTotalCents(items) {
   const arr = Array.isArray(items) ? items : getCart()
   return arr.reduce((sum, i) => {
-    const cents = typeof i.price_cents === 'number'
+    const cents = (typeof i.price_cents === 'number')
       ? i.price_cents
-      : Math.round((i.price_eur || 0) * 100)
-    return sum + (cents * (i.qty || 0))
+      : Math.round((Number(i.price_eur) || 0) * 100)
+    return sum + (cents * (Number(i.qty) || 0))
   }, 0)
 }
 
@@ -114,9 +132,10 @@ export function cartTotalEuro(items) {
 }
 
 /**
- * Sottoscrizione ai cambi carrello (per aggiornamenti UI in tempo reale).
+ * Sottoscrizione ai cambi carrello (aggiornamenti UI in tempo reale).
  * Ritorna una funzione di unsubscribe.
- * Alias: onCartChanged (per retrocompatibilità con il tuo codice).
+ *
+ * Alias: onCartChanged, subscribeCart (retrocompatibilità)
  */
 export function subscribe(listener) {
   if (typeof listener !== 'function') return () => {}
@@ -125,9 +144,12 @@ export function subscribe(listener) {
   try { listener(getCart()) } catch {}
   return () => listeners.delete(listener)
 }
-export const onCartChanged = subscribe
+export const onCartChanged = subscribe      // alias legacy
+export const subscribeCart = subscribe      // alias legacy
 
 // Inizializza stato da localStorage in ambienti browser
 if (typeof window !== 'undefined') {
   loadCart()
+  // emetti stato iniziale per chi ascolta via window
+  emitBrowserEvent()
 }
