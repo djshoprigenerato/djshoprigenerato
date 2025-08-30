@@ -63,6 +63,35 @@ router.get('/products/:id', async (req, res) => {
   }
 })
 
+// ---- PRODOTTO SINGOLO PUBBLICO ----
+router.get('/products/:id', async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ error: 'ID non valido' });
+
+    const { data, error } = await supabaseAuth
+      .from('products')
+      .select(`
+        id,
+        title,
+        description,
+        price_cents,
+        is_active,
+        category_id,
+        product_images (id, url)
+      `)
+      .eq('is_active', true)
+      .eq('id', id)
+      .maybeSingle();
+
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'Prodotto non trovato' });
+    res.json(data);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ---- CATEGORIE PUBBLICHE ----
 router.get('/categories', async (_req, res) => {
   try {
