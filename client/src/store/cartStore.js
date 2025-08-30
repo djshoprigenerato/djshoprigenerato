@@ -1,38 +1,133 @@
-const KEY = 'djshop_cart';
+// client/src/store/cartStore.js
 
-function read() {
-  try { return JSON.parse(localStorage.getItem(KEY) || '[]'); } catch { return []; }
-}
-function write(v) { localStorage.setItem(KEY, JSON.stringify(v)); dispatch(); }
+const STORAGE_KEY = 'cart_v1'
 
-let subs = [];
-function dispatch(){ subs.forEach(fn => fn()); }
+// --- Stato & listeners -------------------------------------------------------
+let cart = []
+let listeners = new Set()
 
-export function subscribeCart(fn){
-  subs.push(fn);
-  return () => { subs = subs.filter(s => s !== fn); };
-}
-
-export function getCart(){ return read(); }
-export function cartCount(){ return read().reduce((a,b)=> a + (Number(b.qty)||0), 0); }
-export function cartTotalCents(items = read()){
-  return items.reduce((sum, i)=> sum + (Number(i.price_cents||0) * Number(i.qty||0)), 0);
+function notify() {
+  for (const cb of listeners) {
+    try { cb(getCart()) } catch {}
+  }
 }
 
-export function addToCart(item){
-  const cart = read();
-  const idx = cart.findIndex(i => i.id === item.id);
-  if (idx >= 0) cart[idx].qty += (item.qty || 1);
-  else cart.push({...item, qty: item.qty || 1});
-  write(cart);
-  try { window.dispatchEvent(new CustomEvent('toast', { detail: 'Aggiunto al carrello' })); } catch {}
+// Carica dal localStorage (solo in browser)
+function loadCart() {
+  if (typeof window === 'undefined') return
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY)
+    cart = raw ? JSON.parse(raw) : []
+  } catch {
+    cart = []
+  }
 }
-export function setQty(id, qty){
-  const cart = read();
-  const idx = cart.findIndex(i => i.id === id);
-  if (idx >= 0) { cart[idx].qty = Math.max(1, Number(qty)||1); write(cart); }
+function saveCart() {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(cart))
+  } catch {}
+  notify()
 }
-export function removeFromCart(id){
-  write(read().filter(i => i.id !== id));
+
+// --- API pubblico ------------------------------------------------------------
+export function getCart() {
+  if (!cart.length && typeof window !== 'undefined') loadCart()
+  return [...cart]
 }
-export function clearCart(){ write([]); }
+
+/**
+ * Aggiunge un prodotto al carrello.
+ * Accetta un oggetto prodotto con almeno: id, title, price_cents (o price_eur), product_images[].
+ */
+export function addToCart(product, qty = 1) {
+  if (!product || !product.id) return
+
+  if (!cart.length && typeof window !== 'undefined') loadCart()
+
+  // normalizza prezzo in centesimi
+  let price_cents = 0
+  if (typeof product.price_cents === 'number') price_cents = product.price_cents
+  else if (typeof product.price_eur === 'number') price_cents = Math.round(product.price_eur * 100)
+
+  const idx = cart.findIndex(i => i.id === product.id)
+  if (idx >= 0) {
+    cart[idx].qty += qty
+  } else {
+    cart.push({
+      id: product.id,
+      title: product.title || '',
+      qty: qty,
+      price_cents,
+      // lasciamo anche un alias price_eur per la UI (solo comodo, il valore "vero" è price_cents)
+      price_eur: price_cents / 100,
+      product_images: product.product_images || [],
+    })
+  }
+  saveCart()
+}
+
+/** Imposta quantità (se <=0 rimuove) */
+export function setQty(id, qty) {
+  if (!cart.length && typeof window !== 'undefined') loadCart()
+  const idx = cart.findIndex(i => i.id === id)
+  if (idx < 0) return
+  if (qty <= 0) {
+    cart.splice(idx, 1)
+  } else {
+    cart[idx].qty = qty
+  }
+  saveCart()
+}
+
+export function removeFromCart(id) {
+  if (!cart.length && typeof window !== 'undefined') loadCart()
+  cart = cart.filter(i => i.id !== id)
+  saveCart()
+}
+
+export function clearCart() {
+  cart = []
+  saveCart()
+}
+
+/** Numero totale di pezzi nel carrello */
+export function cartCount() {
+  if (!cart.length && typeof window !== 'undefined') loadCart()
+  return cart.reduce((n, i) => n + (i.qty || 0), 0)
+}
+
+/** Totale in centesimi. Se passi items li usa, altrimenti lo stato interno */
+export function cartTotalCents(items) {
+  const arr = Array.isArray(items) ? items : getCart()
+  return arr.reduce((sum, i) => {
+    const cents = typeof i.price_cents === 'number'
+      ? i.price_cents
+      : Math.round((i.price_eur || 0) * 100)
+    return sum + (cents * (i.qty || 0))
+  }, 0)
+}
+
+/** Totale in euro (float). Sconsigliato per logica; usare in UI */
+export function cartTotalEuro(items) {
+  return cartTotalCents(items) / 100
+}
+
+/**
+ * Sottoscrizione ai cambi carrello (per aggiornamenti UI in tempo reale).
+ * Ritorna una funzione di unsubscribe.
+ * Alias: onCartChanged (per retrocompatibilità con il tuo codice).
+ */
+export function subscribe(listener) {
+  if (typeof listener !== 'function') return () => {}
+  listeners.add(listener)
+  // invia subito lo stato corrente
+  try { listener(getCart()) } catch {}
+  return () => listeners.delete(listener)
+}
+export const onCartChanged = subscribe
+
+// Inizializza stato da localStorage in ambienti browser
+if (typeof window !== 'undefined') {
+  loadCart()
+}
