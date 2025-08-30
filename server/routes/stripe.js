@@ -4,188 +4,93 @@ import Stripe from 'stripe'
 import { supabaseAdmin } from '../supabase.js'
 
 const router = express.Router()
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY)
 
-// ---------- Utility ----------
-function originFromReq(req) {
-  return process.env.PUBLIC_SITE_URL?.replace(/\/+$/, '') || `${req.protocol}://${req.get('host')}`
-}
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
+  apiVersion: '2024-06-20',
+})
+const APP_URL = process.env.APP_URL || process.env.PUBLIC_URL || 'http://localhost:3000'
+const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET || ''
 
-/**
- * Applica lo sconto al carrello lato server.
- * - cart: [{ id, title, qty, price_cents, image_url }]
- * - discount: { percent_off? , amount_off_cents? }
- * Ritorna un array di line_items pronto per Stripe (price_data con unit_amount scontati).
- */
-function buildDiscountedLineItems(cart = [], discount = null) {
-  // Normalizza numeri
-  const items = cart.map(i => ({
-    id: i.id,
-    title: i.title,
-    qty: Math.max(1, Number(i.qty || 1)),
-    price_cents: Math.max(0, Number(i.price_cents || 0)),
-    image_url: i.image_url || ''
-  }))
-
-  if (!discount) {
-    // Nessuno sconto → importi originali
-    return items.map(i => ({
-      quantity: i.qty,
-      price_data: {
-        currency: 'eur',
-        unit_amount: i.price_cents,
-        product_data: {
-          name: i.title,
-          images: i.image_url ? [i.image_url] : []
-        }
-      }
-    }))
-  }
-
-  // Calcola totali originali
-  const lineTotals = items.map(i => i.price_cents * i.qty)
-  const grandTotal = lineTotals.reduce((a, b) => a + b, 0)
-
-  if (grandTotal <= 0) {
-    // Tutto a zero, non servono pro-rata
-    return items.map(i => ({
-      quantity: i.qty,
-      price_data: {
-        currency: 'eur',
-        unit_amount: 0,
-        product_data: { name: i.title, images: i.image_url ? [i.image_url] : [] }
-      }
-    }))
-  }
-
-  // Caso 1: percentuale
-  if (discount.percent_off) {
-    const p = Math.min(100, Math.max(0, Number(discount.percent_off)))
-    const factor = (100 - p) / 100
-    return items.map(i => ({
-      quantity: i.qty,
-      price_data: {
-        currency: 'eur',
-        unit_amount: Math.max(1, Math.round(i.price_cents * factor)), // almeno 1 cent
-        product_data: {
-          name: i.title,
-          images: i.image_url ? [i.image_url] : []
-        }
-      }
-    }))
-  }
-
-  // Caso 2: importo fisso (amount_off_cents) → ripartizione pro-rata
-  if (discount.amount_off_cents) {
-    let amountOff = Math.min(Number(discount.amount_off_cents) || 0, grandTotal)
-    if (amountOff <= 0) {
-      // Niente da sottrarre
-      return items.map(i => ({
-        quantity: i.qty,
-        price_data: {
-          currency: 'eur',
-          unit_amount: i.price_cents,
-          product_data: { name: i.title, images: i.image_url ? [i.image_url] : [] }
-        }
-      }))
-    }
-
-    // pro-rata per riga
-    const shares = lineTotals.map(t => Math.floor((t / grandTotal) * amountOff))
-    let used = shares.reduce((a, b) => a + b, 0)
-    let remainder = amountOff - used
-
-    // distribuisci il resto 1c alla volta finché rimane
-    for (let idx = 0; remainder > 0 && idx < shares.length; idx++) {
-      shares[idx] += 1
-      remainder -= 1
-    }
-
-    return items.map((i, idx) => {
-      const lineTotal = lineTotals[idx]
-      const discountedLine = Math.max(0, lineTotal - shares[idx])
-      // unit_amount = floor(discountedLine / qty) (almeno 1 cent se la riga ha importo > 0)
-      const perUnit = i.qty > 0 ? Math.floor(discountedLine / i.qty) : 0
-      const unit_amount = discountedLine > 0 ? Math.max(1, perUnit) : 0
-
-      return {
-        quantity: i.qty,
-        price_data: {
-          currency: 'eur',
-          unit_amount,
-          product_data: {
-            name: i.title,
-            images: i.image_url ? [i.image_url] : []
-          }
-        }
-      }
-    })
-  }
-
-  // Nessuna proprietà di sconto valida → ritorna originale
-  return items.map(i => ({
-    quantity: i.qty,
-    price_data: {
-      currency: 'eur',
-      unit_amount: i.price_cents,
-      product_data: { name: i.title, images: i.image_url ? [i.image_url] : [] }
-    }
-  }))
-}
-
-// ---------- Endpoint NON-webhook (usa JSON) ----------
-router.use(express.json())
-
-// Crea la Checkout Session con sconto applicato lato server
-router.post('/create-checkout-session', async (req, res) => {
+// -----------------------------
+// Create checkout session
+// -----------------------------
+router.post('/create-checkout-session', express.json(), async (req, res) => {
   try {
     const { cart, customer, discount } = req.body || {}
 
     if (!Array.isArray(cart) || cart.length === 0) {
-      return res.status(400).json({ error: 'Carrello vuoto.' })
+      return res.status(400).json({ error: 'Cart vuoto' })
     }
 
-    const line_items = buildDiscountedLineItems(cart, discount)
+    // percentuale o importo fisso in centesimi (intero)
+    const percent = Number(discount?.percent_off || 0)
+    const amountOff = Number(discount?.amount_off_cents || 0)
 
-    // URL di ritorno
-    const base = originFromReq(req)
-    const success_url = `${base}/success?session_id={CHECKOUT_SESSION_ID}`
-    const cancel_url = `${base}/cancel`
+    // line items con eventuale sconto incorporato
+    const items = cart.map((i) => {
+      let unit = Number(i.price_cents || 0)
+      if (percent > 0) {
+        unit = Math.max(0, Math.round(unit * (100 - percent) / 100))
+      }
+      return {
+        price_data: {
+          currency: 'eur',
+          product_data: {
+            name: i.title || 'Prodotto',
+            images: i.image_url ? [i.image_url] : [],
+          },
+          unit_amount: unit,
+        },
+        quantity: Math.max(1, Number(i.qty || 1)),
+      }
+    })
+
+    // Se c'è importo fisso, lo ripartiamo proporzionalmente tra le righe
+    if (amountOff > 0 && percent === 0) {
+      const sumLines = cart.reduce((s, i) => s + (i.price_cents || 0) * (i.qty || 1), 0) || 1
+      cart.forEach((ci, idx) => {
+        const lineAmount = (ci.price_cents || 0) * (ci.qty || 1)
+        const share = Math.floor(amountOff * lineAmount / sumLines)
+        const perUnitOff = Math.floor(share / Math.max(1, ci.qty || 1))
+        items[idx].price_data.unit_amount = Math.max(0, items[idx].price_data.unit_amount - perUnitOff)
+      })
+    }
+
+    const metadata = {
+      discount_code_id: discount?.id ? String(discount.id) : '',
+      customer_email: customer?.email || '',
+      customer_name: customer?.name || '',
+      shipping: JSON.stringify(customer?.shipping || {}),
+      user_id: customer?.user_id || '',
+    }
 
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
-      payment_method_types: ['card'],
-      line_items,
-      success_url,
-      cancel_url,
-      customer_email: customer?.email || undefined,
-      metadata: {
-        user_id: customer?.user_id || '',
-        discount_code: discount?.code || '',
-        percent_off: discount?.percent_off ? String(discount.percent_off) : '',
-        amount_off_cents: discount?.amount_off_cents ? String(discount.amount_off_cents) : ''
-      },
-      shipping_address_collection: { allowed_countries: ['IT', 'SM', 'VA'] }
+      line_items: items,
+      success_url: `${APP_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${APP_URL}/cancel`,
+      customer_email: customer?.email,
+      metadata,
     })
 
     return res.json({ url: session.url })
   } catch (e) {
-    console.error('Errore create-checkout-session:', e)
-    return res.status(500).json({ error: 'Impossibile creare la sessione di pagamento' })
+    console.error('create-checkout-session error', e)
+    return res.status(500).json({ error: e.message })
   }
 })
 
-// ---------- Webhook (usa RAW) ----------
-async function webhookHandler(req, res) {
+// -----------------------------
+// Webhook Stripe
+// -----------------------------
+router.post('/webhooks/stripe', express.raw({ type: 'application/json' }), async (req, res) => {
   const sig = req.headers['stripe-signature']
-  const whSecret = process.env.STRIPE_WEBHOOK_SECRET
-  if (!whSecret) return res.status(500).send('Webhook secret non configurata')
-
   let event
+
   try {
-    event = stripe.webhooks.constructEvent(req.body, sig, whSecret)
+    event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret)
   } catch (err) {
-    console.error('[stripe] firma non valida:', err?.message)
+    console.error('❌ Webhook signature verification failed.', err.message)
     return res.status(400).send(`Webhook Error: ${err.message}`)
   }
 
@@ -193,41 +98,80 @@ async function webhookHandler(req, res) {
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object
 
-      // Recupera i line items pagati (già scontati)
-      const items = await stripe.checkout.sessions.listLineItems(session.id, { limit: 100 })
+      // Recupera i line items per costruire order_items
+      const li = await stripe.checkout.sessions.listLineItems(session.id, { limit: 100 })
 
-      // Esempio salvataggio ordine (adatta ai tuoi campi/tabella)
-      await supabaseAdmin.from('orders').insert({
+      const shipping = (() => {
+        try { return JSON.parse(session.metadata?.shipping || '{}') } catch { return {} }
+      })()
+
+      const payload = {
         user_id: session.metadata?.user_id || null,
-        email: session.customer_details?.email || session.customer_email || null,
+        customer_email: session.customer_details?.email || session.metadata?.customer_email || null,
+        customer_name: session.customer_details?.name || session.metadata?.customer_name || null,
+        shipping_address: shipping,
         status: 'paid',
-        total_cents: session.amount_total ?? null,
-        discount_code: session.metadata?.discount_code || null,
+        total_cents: session.amount_total || 0,
+        discount_code_id: session.metadata?.discount_code_id ? Number(session.metadata.discount_code_id) : null,
+        stripe_payment_intent: session.payment_intent || null,
         stripe_session_id: session.id,
-        items: items?.data?.map(li => ({
-          description: li.description,
-          quantity: li.quantity,
-          amount_subtotal: li.amount_subtotal, // cents
-          amount_total: li.amount_total,       // cents
-        })) || [],
-        shipping: {
-          name: session.customer_details?.name || '',
-          address: session.customer_details?.address || null
-        }
-      })
+      }
+
+      // Inserisci l'ordine
+      const { data: order, error: orderErr } = await supabaseAdmin
+        .from('orders')
+        .insert(payload)
+        .select('id')
+        .single()
+
+      if (orderErr) throw orderErr
+
+      // Inserisci le righe
+      const rows = li.data.map((row) => ({
+        order_id: order.id,
+        product_id: null,
+        title: row.description,
+        quantity: row.quantity || 1,
+        price_cents: row.amount_subtotal && row.quantity ? Math.round(row.amount_subtotal / row.quantity) : 0,
+        image_url: null,
+      }))
+
+      if (rows.length) {
+        const { error: itemsErr } = await supabaseAdmin.from('order_items').insert(rows)
+        if (itemsErr) throw itemsErr
+      }
     }
 
-    return res.json({ received: true })
+    res.json({ received: true })
   } catch (e) {
-    console.error('Errore gestione webhook:', e)
-    return res.status(500).send('Errore interno')
+    console.error('Webhook handler error', e)
+    res.status(500).json({ error: e.message })
   }
-}
+})
 
-// Path ufficiale (consigliato)
-router.post('/stripe/webhook', express.raw({ type: 'application/json' }), webhookHandler)
+// -----------------------------
+// Ritorna ordine per session id (per la pagina Success)
+// -----------------------------
+router.get('/orders/by-session/:id', async (req, res) => {
+  const { id } = req.params
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('orders')
+      .select(`
+        id, created_at, total_cents, customer_email, customer_name,
+        shipping_address, status, stripe_payment_intent, stripe_session_id,
+        discount_code_id,
+        order_items (product_id, title, quantity, price_cents, image_url)
+      `)
+      .eq('stripe_session_id', id)
+      .maybeSingle()
 
-// (Facoltativo) Alias se su Stripe hai un endpoint diverso, es. /webhooks/stripe
-// router.post('/webhooks/stripe', express.raw({ type: 'application/json' }), webhookHandler)
+    if (error) throw error
+    if (!data) return res.status(404).json({ error: 'not-found' })
+    return res.json(data)
+  } catch (e) {
+    return res.status(500).json({ error: e.message })
+  }
+})
 
 export default router
