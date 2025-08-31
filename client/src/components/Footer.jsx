@@ -36,7 +36,7 @@ export default function Footer() {
         </div>
 
         <div style={{ marginBottom: "15px" }}>
-          <strong>Spedizioni con</strong>
+          <strong>Spedizioni SEMPRE GRATUITE con</strong>
           <div style={{
             marginTop: "10px",
             display: "flex",
