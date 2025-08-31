@@ -44,7 +44,6 @@ export default function Navbar(){
           <>
             <Link to="/login">Accedi</Link>
             <Link to="/registrati">Registrati</Link>
-            <Link to="/termini">Termini</Link>
           </>
         )}
         {user?.app_metadata?.role === 'admin' && <Link to="/admin">Admin</Link>}
