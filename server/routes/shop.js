@@ -12,6 +12,18 @@ function getBearer(req) {
   return parts.length === 2 && /^Bearer$/i.test(parts[0]) ? parts[1] : (parts[0] || '')
 }
 
+function buildTrackingUrl(carrier, code) {
+  if (!carrier || !code) return null
+  const c = String(carrier).toLowerCase()
+  if (c === 'gls') {
+    return `https://gls-group.com/IT/it/servizi-online/ricerca-spedizioni/?match=${encodeURIComponent(code)}&type=NAT`
+  }
+  if (c === 'sda') {
+    return `https://www.poste.it/cerca/index.html#/risultati-spedizioni/${encodeURIComponent(code)}`
+  }
+  return null
+}
+
 /* ================== PRODOTTI PUBBLICI ================== */
 router.get('/products', async (req, res) => {
   try {
@@ -122,6 +134,9 @@ router.get('/my-orders', async (req, res) => {
         customer_email,
         customer_phone,
         shipping_address,
+        shipping_carrier,
+        tracking_code,
+        shipping_tracking_url,
         order_items ( product_id, title, quantity, price_cents, image_url )
       `)
       .eq('user_id', userId)
@@ -129,26 +144,101 @@ router.get('/my-orders', async (req, res) => {
 
     if (error) throw error
 
-    // Risposta “safe”
-    const safe = (data || []).map(o => ({
-      id: o.id,
-      created_at: o.created_at,
-      status: o.status,
-      total_cents: o.total_cents,
-      customer_name: o.customer_name,
-      customer_email: o.customer_email,
-      customer_phone: o.customer_phone || null,
-      shipping_address: o.shipping_address, // jsonb (city, line1, line2, country, postal_code, state)
-      items: (o.order_items || []).map(i => ({
+    const safe = (data || []).map(o => {
+      const url = o.shipping_tracking_url || buildTrackingUrl(o.shipping_carrier, o.tracking_code)
+      return {
+        id: o.id,
+        created_at: o.created_at,
+        status: o.status,
+        total_cents: o.total_cents,
+        customer_name: o.customer_name,
+        customer_email: o.customer_email,
+        customer_phone: o.customer_phone || null,
+        shipping_address: o.shipping_address, // jsonb (city, line1, line2, country, postal_code, state)
+        shipping_carrier: o.shipping_carrier || null,
+        tracking_code: o.tracking_code || null,
+        shipping_tracking_url: url,
+        items: (o.order_items || []).map(i => ({
+          product_id: i.product_id,
+          title: i.title,
+          quantity: i.quantity,
+          price_cents: i.price_cents,
+          image_url: i.image_url || null
+        }))
+      }
+    })
+
+    res.json(safe)
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+/* ============ ORDINE DETTAGLIO (per cliente loggato) ==============
+   Verifica il token, controlla che l’ordine appartenga all’utente e restituisce i dettagli. */
+router.get('/orders/:id', async (req, res) => {
+  try {
+    const accessToken = getBearer(req)
+    if (!accessToken) return res.status(401).json({ error: 'Unauthorized' })
+
+    const { data: userData, error: userErr } = await supabaseAdmin.auth.getUser(accessToken)
+    if (userErr) throw userErr
+    const userId = userData?.user?.id
+    if (!userId) return res.status(401).json({ error: 'Invalid token' })
+
+    const id = Number(req.params.id)
+    if (!id) return res.status(400).json({ error: 'id mancante' })
+
+    // carica l'ordine e verifica appartenenza
+    const { data: order, error } = await supabaseAdmin
+      .from('orders')
+      .select(`
+        id,
+        user_id,
+        created_at,
+        status,
+        total_cents,
+        customer_name,
+        customer_email,
+        customer_phone,
+        shipping_address,
+        shipping_carrier,
+        tracking_code,
+        shipping_tracking_url,
+        order_items ( product_id, title, quantity, price_cents, image_url )
+      `)
+      .eq('id', id)
+      .maybeSingle()
+
+    if (error) throw error
+    if (!order) return res.status(404).json({ error: 'not found' })
+    if (order.user_id && order.user_id !== userId) {
+      // l'ordine esiste ma non appartiene all'utente
+      return res.status(403).json({ error: 'forbidden' })
+    }
+
+    const url = order.shipping_tracking_url || buildTrackingUrl(order.shipping_carrier, order.tracking_code)
+
+    return res.json({
+      id: order.id,
+      created_at: order.created_at,
+      status: order.status,
+      total_cents: order.total_cents,
+      customer_name: order.customer_name,
+      customer_email: order.customer_email,
+      customer_phone: order.customer_phone || null,
+      shipping_address: order.shipping_address,
+      shipping_carrier: order.shipping_carrier || null,
+      tracking_code: order.tracking_code || null,
+      shipping_tracking_url: url,
+      items: (order.order_items || []).map(i => ({
         product_id: i.product_id,
         title: i.title,
         quantity: i.quantity,
         price_cents: i.price_cents,
         image_url: i.image_url || null
       }))
-    }))
-
-    res.json(safe)
+    })
   } catch (e) {
     res.status(500).json({ error: e.message })
   }
@@ -172,6 +262,9 @@ router.get('/orders/by-session/:sid', async (req, res) => {
         customer_name,
         customer_phone,
         shipping_address,
+        shipping_carrier,
+        tracking_code,
+        shipping_tracking_url,
         status,
         total_cents,
         discount_code_id,
@@ -184,6 +277,8 @@ router.get('/orders/by-session/:sid', async (req, res) => {
     if (error) throw error
     if (!order) return res.status(404).json({ error: 'not found' })
 
+    const url = order.shipping_tracking_url || buildTrackingUrl(order.shipping_carrier, order.tracking_code)
+
     const safe = {
       id: order.id,
       created_at: order.created_at,
@@ -192,6 +287,9 @@ router.get('/orders/by-session/:sid', async (req, res) => {
       customer_email: order.customer_email,
       customer_phone: order.customer_phone || null,
       shipping_address: order.shipping_address,
+      shipping_carrier: order.shipping_carrier || null,
+      tracking_code: order.tracking_code || null,
+      shipping_tracking_url: url,
       total_cents: order.total_cents,
       discount_code_id: order.discount_code_id || null,
       items: (order.order_items || []).map(i => ({
