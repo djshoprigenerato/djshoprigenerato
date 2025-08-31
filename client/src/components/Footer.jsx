@@ -6,7 +6,7 @@ export default function Footer() {
     <footer style={{
       marginTop: "40px",
       padding: "30px 20px",
-      background: "#111",
+      background: "transparent",
       color: "#ccc",
       fontSize: "14px"
     }}>
