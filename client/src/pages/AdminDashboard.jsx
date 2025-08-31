@@ -378,6 +378,7 @@ function OrdersAdmin(){
   }
   useEffect(()=>{ load() }, [])
 
+  // filtro client-side
   const filtered = items.filter(o=>{
     const n = (o.customer_name||"").toLowerCase()
     const c = (o.shipping_address?.city||"").toLowerCase()
@@ -396,13 +397,18 @@ function OrdersAdmin(){
     return okName && okCity && okPhone && okEmail && okFrom && okTo
   })
 
+  // CSV: una riga per ogni ARTICOLO
   const exportCSV = () => {
-    const rows = [["OrderID","Data","Stato","Cliente","Email","Telefono","Città","Totale(€)","Articolo","Q.tà","Prezzo(€)"]]
+    const rows = [["OrderID","Data","Stato","Cliente","Email","Telefono","Città","Totale(€)","Corriere","Tracking","Articolo","Q.tà","Prezzo(€)"]]
     filtered.forEach(o=>{
       const city = o.shipping_address?.city || ""
       const phone = o.customer_phone || o.shipping_phone || ""
       const created = new Date(o.created_at).toLocaleString()
-      const base = [o.id, created, o.status, o.customer_name||"", o.customer_email||"", phone, city, (o.total_cents/100).toFixed(2)]
+      const base = [
+        o.id, created, o.status, o.customer_name||"", o.customer_email||"",
+        phone, city, (o.total_cents/100).toFixed(2),
+        o.shipping_carrier || "", o.tracking_code || ""
+      ]
       const items = (o.order_items||[])
       if (items.length === 0) {
         rows.push([...base, "", "", ""])
@@ -420,11 +426,12 @@ function OrdersAdmin(){
     a.click()
   }
 
+  // PDF semplice via finestra di stampa
   const exportPDF = () => {
     const win = window.open("", "_blank")
     if(!win) return
     win.document.write("<h1>Ordini</h1>")
-    win.document.write("<table border=1 cellspacing=0 cellpadding=4><tr><th>ID</th><th>Data</th><th>Cliente</th><th>Email</th><th>Telefono</th><th>Città</th><th>Totale</th><th>Articoli</th></tr>")
+    win.document.write("<table border=1 cellspacing=0 cellpadding=4><tr><th>ID</th><th>Data</th><th>Cliente</th><th>Email</th><th>Telefono</th><th>Città</th><th>Totale</th><th>Corriere</th><th>Tracking</th><th>Articoli</th></tr>")
     filtered.forEach(o=>{
       const items = (o.order_items||[]).map(it=>`${it.title}×${it.quantity} (€${(it.price_cents/100).toFixed(2)})`).join("<br>")
       win.document.write(
@@ -436,6 +443,8 @@ function OrdersAdmin(){
           <td>${o.customer_phone||o.shipping_phone||""}</td>
           <td>${o.shipping_address?.city||""}</td>
           <td>€${(o.total_cents/100).toFixed(2)}</td>
+          <td>${(o.shipping_carrier||"").toUpperCase()}</td>
+          <td>${o.tracking_code||""}</td>
           <td>${items}</td>
         </tr>`
       )
@@ -448,6 +457,7 @@ function OrdersAdmin(){
     <div className="card">
       <h3>Tutti gli ordini</h3>
 
+      {/* FILTRI */}
       <div className="form-row" style={{marginBottom:8}}>
         <input placeholder="Nome" value={filters.name} onChange={e=>setFilters({...filters,name:e.target.value})}/>
         <input placeholder="Città" value={filters.city} onChange={e=>setFilters({...filters,city:e.target.value})}/>
@@ -475,7 +485,8 @@ function OrdersAdmin(){
         <thead>
           <tr>
             <th>ID</th><th>Data</th><th>Stato</th>
-            <th>Cliente</th><th>Email</th><th>Telefono</th><th>Totale</th><th></th>
+            <th>Cliente</th><th>Email</th><th>Telefono</th>
+            <th>Corriere</th><th>Tracking</th><th>Totale</th><th></th>
           </tr>
         </thead>
         <tbody>{filtered.map(o=>(
@@ -486,33 +497,101 @@ function OrdersAdmin(){
             <td>{o.customer_name}</td>
             <td>{o.customer_email}</td>
             <td>{o.customer_phone||o.shipping_phone||""}</td>
+            <td>{(o.shipping_carrier||"").toUpperCase()}</td>
+            <td style={{maxWidth:160, overflow:'hidden', textOverflow:'ellipsis'}} title={o.tracking_code||""}>{o.tracking_code||""}</td>
             <td>{(o.total_cents/100).toFixed(2)}€</td>
             <td><button className="btn ghost" onClick={()=>open(o.id)}>Dettagli</button></td>
           </tr>
         ))}</tbody>
       </table>
 
-      {detail && (
-        <div style={{marginTop:16}} className="card">
-          <h3>Dettaglio ordine #{detail.id}</h3>
-          <p>
-            <strong>Cliente:</strong> {detail.customer_name} ({detail.customer_email})<br/>
-            <strong>Telefono:</strong> {detail.customer_phone||detail.shipping_phone||"-"}
-          </p>
-          <pre style={{whiteSpace:'pre-wrap'}}>{JSON.stringify(detail.shipping_address, null, 2)}</pre>
-          <table className="table">
-            <thead><tr><th>Articolo</th><th>Q.tà</th><th>Prezzo</th></tr></thead>
-            <tbody>{(detail.order_items||[]).map((it,idx) => (
-              <tr key={idx}><td>{it.title}</td><td>{it.quantity}</td><td>{(it.price_cents/100).toFixed(2)}€</td></tr>
-            ))}</tbody>
-          </table>
-          <div style={{marginTop:10}}>
-            <button className="btn ghost" onClick={()=>window.print()}>Stampa</button>
-          </div>
-        </div>
-      )}
+      {detail && <OrderDetailCard detail={detail} onClose={()=>setDetail(null)} onSaved={async(id)=>{ await open(id); await load(); }} />}
     </div>
   )
+}
+
+function OrderDetailCard({ detail, onClose, onSaved }){
+  const [carrier, setCarrier] = useState(detail.shipping_carrier || '')
+  const [tracking, setTracking] = useState(detail.tracking_code || '')
+  const trackingUrl = detail.shipping_tracking_url || buildTrackingUrlLocal(carrier, tracking)
+
+  const saveShipment = async () => {
+    try{
+      if(!carrier || !tracking) return alert('Seleziona corriere e inserisci il tracking.')
+      const cfg = await getAuthConfig()
+      await axios.put(`/api/admin/orders/${detail.id}/shipment`, { carrier, tracking }, cfg)
+      alert('Dati spedizione aggiornati e email inviata (se possibile).')
+      await onSaved(detail.id)
+    }catch(e){
+      alert('Errore aggiornamento spedizione: ' + (e?.response?.data?.error || e.message))
+    }
+  }
+
+  return (
+    <div style={{marginTop:16}} className="card">
+      <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', gap:12}}>
+        <h3 style={{margin:0}}>Dettaglio ordine #{detail.id}</h3>
+        <div style={{display:'flex', gap:8}}>
+          <button className="btn ghost" onClick={()=>window.print()}>Stampa</button>
+          <button className="btn ghost" onClick={onClose}>Chiudi</button>
+        </div>
+      </div>
+
+      <p style={{marginTop:8}}>
+        <strong>Cliente:</strong> {detail.customer_name} ({detail.customer_email})<br/>
+        <strong>Telefono:</strong> {detail.customer_phone||detail.shipping_phone||"-"}
+      </p>
+
+      <pre style={{whiteSpace:'pre-wrap'}}>{JSON.stringify(detail.shipping_address, null, 2)}</pre>
+
+      <table className="table">
+        <thead><tr><th>Articolo</th><th>Q.tà</th><th>Prezzo</th></tr></thead>
+        <tbody>{(detail.order_items||[]).map((it,idx) => (
+          <tr key={idx}><td>{it.title}</td><td>{it.quantity}</td><td>{(it.price_cents/100).toFixed(2)}€</td></tr>
+        ))}</tbody>
+      </table>
+
+      {/* Sezione spedizione */}
+      <div style={{marginTop:14, paddingTop:12, borderTop:'1px dashed #333'}}>
+        <h4 style={{margin:'0 0 8px'}}>Spedizione</h4>
+        <div className="form-row">
+          <div>
+            <label>Corriere</label>
+            <select value={carrier} onChange={e=>setCarrier(e.target.value)}>
+              <option value="">— Seleziona —</option>
+              <option value="gls">GLS</option>
+              <option value="sda">SDA</option>
+            </select>
+          </div>
+          <div>
+            <label>Tracking</label>
+            <input value={tracking} onChange={e=>setTracking(e.target.value)} placeholder="Codice tracking"/>
+          </div>
+        </div>
+        <div style={{display:'flex', gap:8, alignItems:'center', marginTop:8}}>
+          <button className="btn" onClick={saveShipment}>Salva spedizione</button>
+          {trackingUrl && <a className="btn ghost" href={trackingUrl} target="_blank" rel="noreferrer">Apri tracking</a>}
+        </div>
+        {detail.shipping_carrier && detail.tracking_code && (
+          <p style={{marginTop:8, fontSize:14, opacity:.85}}>
+            Corrente: <strong>{String(detail.shipping_carrier).toUpperCase()}</strong> — {detail.tracking_code}{' '}
+            {detail.shipping_tracking_url && (<>
+              — <a href={detail.shipping_tracking_url} target="_blank" rel="noreferrer">link</a>
+            </>)}
+          </p>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// helper client-side per mostrare il link mentre si compila (prima del salvataggio)
+function buildTrackingUrlLocal(carrier, code){
+  if(!carrier || !code) return null
+  const c = String(carrier).toLowerCase()
+  if (c === 'gls') return `https://gls-group.com/IT/it/servizi-online/ricerca-spedizioni/?match=${encodeURIComponent(code)}&type=NAT`
+  if (c === 'sda') return `https://www.poste.it/cerca/index.html#/risultati-spedizioni/${encodeURIComponent(code)}`
+  return null
 }
 
 /* ==================== CODICI SCONTO ==================== */
