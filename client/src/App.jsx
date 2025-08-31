@@ -13,6 +13,7 @@ import Terms from "./pages/Terms"
 import AdminDashboard from "./pages/AdminDashboard"
 import SuccessPage from "./pages/SuccessPage"
 import Toast from "./components/Toast"
+import About from "./pages/About.jsx"; 
 
 export default function App(){
   return (
