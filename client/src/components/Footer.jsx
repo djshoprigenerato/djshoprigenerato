@@ -22,16 +22,16 @@ export default function Footer() {
             gap: "14px",              // meno spazio
             flexWrap: "wrap"
           }}>
-            <img src="/visa.svg" alt="Visa" style={{ height: "40px" }} />
-            <img src="/mastercard.svg" alt="Mastercard" style={{ height: "40px" }} />
-            <img src="/amex.svg" alt="Amex" style={{ height: "40px" }} />
-            <img src="/applepay.svg" alt="Apple Pay" style={{ height: "40px" }} />
-            <img src="/googlepay.svg" alt="Google Pay" style={{ height: "40px" }} />
-            <img src="/amazonpay.svg" alt="Amazon Pay" style={{ height: "40px" }} />
-            <img src="/satispay.svg" alt="Satispay" style={{ height: "40px" }} />
-            <img src="/klarna.svg" alt="Klarna" style={{ height: "40px" }} />
-            <img src="/revolut.svg" alt="Revolut" style={{ height: "40px" }} />
-            <img src="/stripe.svg" alt="Stripe" style={{ height: "40px" }} />
+            <img src="/brands/payments/visa.svg" alt="Visa" style={{ height: "40px" }} />
+            <img src="/brands/payments/mastercard.svg" alt="Mastercard" style={{ height: "40px" }} />
+            <img src="/brands/payments/amex.svg" alt="Amex" style={{ height: "40px" }} />
+            <img src="/brands/payments/applepay.svg" alt="Apple Pay" style={{ height: "40px" }} />
+            <img src="/brands/payments/googlepay.svg" alt="Google Pay" style={{ height: "40px" }} />
+            <img src="/brands/payments/amazonpay.svg" alt="Amazon Pay" style={{ height: "40px" }} />
+            <img src="/brands/payments/satispay.svg" alt="Satispay" style={{ height: "40px" }} />
+            <img src="/brands/payments/klarna.svg" alt="Klarna" style={{ height: "40px" }} />
+            <img src="/brands/payments/revolut.svg" alt="Revolut" style={{ height: "40px" }} />
+            <img src="/brands/payments/stripe.svg" alt="Stripe" style={{ height: "40px" }} />
           </div>
         </div>
 
@@ -44,8 +44,8 @@ export default function Footer() {
             alignItems: "center",
             gap: "20px"
           }}>
-            <img src="/sda.svg" alt="SDA" style={{ height: "40px" }} />
-            <img src="/gls.svg" alt="GLS" style={{ height: "40px" }} />
+            <img src="/brands/shipping/sda.svg" alt="SDA" style={{ height: "40px" }} />
+            <img src="/brands/shipping/gls.svg" alt="GLS" style={{ height: "40px" }} />
           </div>
         </div>
 
