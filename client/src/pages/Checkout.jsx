@@ -9,8 +9,8 @@ export default function Checkout(){
   const [items, setItems] = useState([]);
   const [discountCode, setDiscountCode] = useState('');
   const [discount, setDiscount] = useState(null);
-  const [acceptTC, setAcceptTC] = useState(false);        // 👈 nuova spunta T&C
-  const [touched, setTouched] = useState({});             // per evidenziare i campi mancanti
+  const [acceptTC, setAcceptTC] = useState(false);
+  const [touched, setTouched] = useState({});
 
   const [customer, setCustomer] = useState({
     name: '',
@@ -92,7 +92,6 @@ export default function Checkout(){
   };
 
   const pay = async () => {
-    // Se manca qualcosa, evidenzia e blocca
     if (missingKeys.length > 0 || !acceptTC) {
       markAllTouched();
       if (!acceptTC) {
@@ -120,7 +119,6 @@ export default function Checkout(){
     }
   };
 
-  // stile bordo rosso per campi invalidi
   const invalidStyle = (flag) => flag ? { borderColor: '#ff4d4f', outlineColor: '#ff4d4f' } : {};
 
   return (
@@ -221,18 +219,24 @@ export default function Checkout(){
             </p>
           )}
 
-          {/* Checkbox Termini & Condizioni */}
+          {/* Checkbox Termini & Condizioni (compatto) */}
           <div style={{ marginTop: 18, paddingTop: 12, borderTop: '1px dashed #333' }}>
-            <label style={{ display:'flex', gap:8, alignItems:'flex-start' }}>
+            <label style={{ display:'flex', gap:6, alignItems:'center', fontSize:14 }}>
               <input
                 type="checkbox"
                 checked={acceptTC}
                 onChange={e => setAcceptTC(e.target.checked)}
                 onBlur={()=>setTouched(t=>({...t, tc:true}))}
-                style={touched.tc && !acceptTC ? { outline: '2px solid #ff4d4f' } : {}}
+                style={{
+                  margin: 0,
+                  width: 16,
+                  height: 16,
+                  accentColor: '#ff8000',
+                  ...(touched.tc && !acceptTC ? { outline: '2px solid #ff4d4f' } : {})
+                }}
               />
               <span>
-                Procedendo all’acquisto <strong>accetti</strong> tutti i{' '}
+                Procedendo all’acquisto <strong>accetti</strong> tutti i{" "}
                 <Link to="/termini" target="_blank" rel="noreferrer">Termini e Condizioni</Link>.
               </span>
             </label>
@@ -258,14 +262,11 @@ export default function Checkout(){
           <h2>Totale: {(discountedTotalCents/100).toFixed(2)}€</h2>
           <p className="badge free">Consegna gratuita (SDA/GLS)</p>
 
-          <button
-            className="btn"
-            onClick={pay}
-          >
+          <button className="btn" onClick={pay}>
             Paga con Stripe
           </button>
-          {/* Se preferisci, puoi disabilitare il bottone finché non è tutto ok: */}
-          {/* disabled={missingKeys.length>0 || !acceptTC} */}
+          {/* Se vuoi, puoi disabilitare finché non è tutto ok:
+              disabled={missingKeys.length>0 || !acceptTC} */}
         </div>
       </div>
     </div>
