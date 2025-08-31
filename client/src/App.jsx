@@ -32,6 +32,7 @@ export default function App(){
         <Route path="/admin" element={<AdminDashboard />} />
         <Route path="/success" element={<SuccessPage />} />
         <Route path="*" element={<Home />} />
+        <Route path="/chi-siamo" element={<About />} /> 
       </Routes>
       <Toast />
     </BrowserRouter>
