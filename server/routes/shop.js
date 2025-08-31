@@ -4,6 +4,14 @@ import { supabaseAuth, supabaseAdmin } from '../supabase.js'
 
 const router = express.Router()
 
+/* ================== UTILS ================== */
+function getBearer(req) {
+  const h = req.headers.authorization || req.headers.Authorization || ''
+  // formati accettati: "Bearer <token>" oppure solo "<token>"
+  const parts = String(h).trim().split(/\s+/)
+  return parts.length === 2 && /^Bearer$/i.test(parts[0]) ? parts[1] : (parts[0] || '')
+}
+
 /* ================== PRODOTTI PUBBLICI ================== */
 router.get('/products', async (req, res) => {
   try {
@@ -89,6 +97,63 @@ router.get('/discounts/:code', async (req, res) => {
   }
 })
 
+/* ================== I MIEI ORDINI (utente loggato) ==================
+   Restituisce solo gli ordini dell’utente autenticato (via Bearer token). */
+router.get('/my-orders', async (req, res) => {
+  try {
+    const accessToken = getBearer(req)
+    if (!accessToken) return res.status(401).json({ error: 'Unauthorized' })
+
+    // Recupero dell'utente dal token
+    const { data: userData, error: userErr } = await supabaseAdmin.auth.getUser(accessToken)
+    if (userErr) throw userErr
+    const userId = userData?.user?.id
+    if (!userId) return res.status(401).json({ error: 'Invalid token' })
+
+    // Query ordini per user_id
+    const { data, error } = await supabaseAdmin
+      .from('orders')
+      .select(`
+        id,
+        created_at,
+        status,
+        total_cents,
+        customer_name,
+        customer_email,
+        customer_phone,
+        shipping_address,
+        order_items ( product_id, title, quantity, price_cents, image_url )
+      `)
+      .eq('user_id', userId)
+      .order('id', { ascending: false })
+
+    if (error) throw error
+
+    // Risposta “safe”
+    const safe = (data || []).map(o => ({
+      id: o.id,
+      created_at: o.created_at,
+      status: o.status,
+      total_cents: o.total_cents,
+      customer_name: o.customer_name,
+      customer_email: o.customer_email,
+      customer_phone: o.customer_phone || null,
+      shipping_address: o.shipping_address, // jsonb (city, line1, line2, country, postal_code, state)
+      items: (o.order_items || []).map(i => ({
+        product_id: i.product_id,
+        title: i.title,
+        quantity: i.quantity,
+        price_cents: i.price_cents,
+        image_url: i.image_url || null
+      }))
+    }))
+
+    res.json(safe)
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
 /* ================== ORDER RECAP BY STRIPE SESSION ==================
    Usato dalla SuccessPage per mostrare il riepilogo e triggerare lo
    svuotamento del carrello solo quando l’ordine esiste davvero.     */
@@ -105,6 +170,7 @@ router.get('/orders/by-session/:sid', async (req, res) => {
         user_id,
         customer_email,
         customer_name,
+        customer_phone,
         shipping_address,
         status,
         total_cents,
@@ -118,13 +184,13 @@ router.get('/orders/by-session/:sid', async (req, res) => {
     if (error) throw error
     if (!order) return res.status(404).json({ error: 'not found' })
 
-    // Risposta “safe” per il client
     const safe = {
       id: order.id,
       created_at: order.created_at,
       status: order.status,
       customer_name: order.customer_name,
       customer_email: order.customer_email,
+      customer_phone: order.customer_phone || null,
       shipping_address: order.shipping_address,
       total_cents: order.total_cents,
       discount_code_id: order.discount_code_id || null,
