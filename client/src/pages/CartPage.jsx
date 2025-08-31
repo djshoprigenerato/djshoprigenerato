@@ -1,67 +1,115 @@
 // client/src/pages/CartPage.jsx
 import { useEffect, useState } from "react";
-import { getCart, setQty, removeFromCart, cartTotalCents, onCartChanged } from "../store/cartStore";
 import { Link, useNavigate } from "react-router-dom";
+import {
+  getCart,
+  setQty,
+  removeFromCart,
+  cartTotalCents,
+  onCartChanged, // alias di subscribe
+} from "../store/cartStore";
 
 export default function CartPage() {
-  const nav = useNavigate();
   const [items, setItems] = useState(getCart());
+  const nav = useNavigate();
 
   useEffect(() => {
-    setItems(getCart());
-    const off = onCartChanged(setItems);
-    return off;
+    // sync in tempo reale con lo store
+    const unsub = onCartChanged((next) => setItems(next));
+    return () => unsub?.();
   }, []);
 
   const totalCents = cartTotalCents(items);
+
+  const handleQty = (id, v) => {
+    const n = Math.max(0, Number(v) || 0);
+    setQty(id, n);
+  };
+
+  if (!items.length) {
+    return (
+      <div className="container">
+        <h1>Carrello</h1>
+        <div className="card">
+          <p>Il carrello è vuoto.</p>
+          <Link className="btn" to="/prodotti">Vai ai prodotti</Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="container">
       <h1>Carrello</h1>
       <div className="card">
-        {items.length === 0 ? (
-          <p>Il carrello è vuoto. <Link to="/prodotti">Sfoglia i prodotti</Link></p>
-        ) : (
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Prodotto</th>
-                <th>Prezzo</th>
-                <th>Q.tà</th>
-                <th>Subtotale</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map(i => {
-                const unitEUR = ((Number(i.price_cents) || 0) / 100).toFixed(2);
-                const subEUR = (((Number(i.price_cents) || 0) * (i.qty || 1)) / 100).toFixed(2);
-                return (
-                  <tr key={i.id}>
-                    <td>{i.title}</td>
-                    <td>{unitEUR}€</td>
-                    <td>
-                      <div style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
-                        <button className="btn ghost" onClick={() => setQty(i.id, i.qty - 1)}>-</button>
-                        <span>{i.qty}</span>
-                        <button className="btn ghost" onClick={() => setQty(i.id, i.qty + 1)}>+</button>
-                      </div>
-                    </td>
-                    <td>{subEUR}€</td>
-                    <td><button className="btn ghost" onClick={() => removeFromCart(i.id)}>Rimuovi</button></td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-        <div style={{ textAlign: 'right', fontWeight: 800, fontSize: 18, marginTop: 10 }}>
-          Totale: {(totalCents / 100).toFixed(2)}€
-        </div>
-        <div style={{ textAlign: 'right', marginTop: 10 }}>
-          <button disabled={!items.length} className="btn" onClick={() => nav('/checkout')}>
-            Procedi al checkout
-          </button>
+        <table className="table">
+          <thead>
+            <tr>
+              <th style={{width:80}}>Foto</th>
+              <th>Prodotto</th>
+              <th style={{width:120}}>Prezzo</th>
+              <th style={{width:120}}>Q.tà</th>
+              <th style={{width:120}}>Totale</th>
+              <th style={{width:90}}></th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((i) => {
+              const unitEUR = ((i.price_eur ?? (i.price_cents / 100)) || 0).toFixed(2);
+              const rowTotal = (((i.price_cents || 0) * (i.qty || 0)) / 100).toFixed(2);
+              const img = i.product_images?.[0]?.url || "/placeholder.png";
+              return (
+                <tr key={i.id}>
+                  <td>
+                    <Link to={`/prodotti/${i.id}`} title="Vai al dettaglio">
+                      <img
+                        src={img}
+                        alt={i.title}
+                        style={{
+                          width: 64,
+                          height: 48,
+                          objectFit: "cover",
+                          borderRadius: 8,
+                          border: "1px solid var(--line)",
+                        }}
+                      />
+                    </Link>
+                  </td>
+                  <td>
+                    {/* Nome prodotto cliccabile verso il dettaglio */}
+                    <Link to={`/prodotti/${i.id}`} style={{ color: "var(--text)", textDecoration: "none", fontWeight: 600 }}>
+                      {i.title}
+                    </Link>
+                  </td>
+                  <td>{unitEUR}€</td>
+                  <td>
+                    <input
+                      type="number"
+                      min="0"
+                      value={i.qty}
+                      onChange={(e) => handleQty(i.id, e.target.value)}
+                      style={{ width: 80 }}
+                    />
+                  </td>
+                  <td>{rowTotal}€</td>
+                  <td>
+                    <button className="btn ghost" onClick={() => removeFromCart(i.id)}>
+                      Rimuovi
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+            <tr>
+              <td colSpan={4} style={{ textAlign: "right", fontWeight: 700 }}>Subtotale</td>
+              <td colSpan={2} style={{ fontWeight: 700 }}>{(totalCents / 100).toFixed(2)}€</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12 }}>
+          <Link className="btn ghost" to="/prodotti">Continua gli acquisti</Link>
+          <button className="btn" onClick={() => nav("/checkout")}>Vai al checkout</button>
         </div>
       </div>
     </div>
