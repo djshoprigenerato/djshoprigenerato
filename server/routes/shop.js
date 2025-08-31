@@ -100,22 +100,19 @@ router.get('/discounts/:code', async (req, res) => {
   }
 })
 
-/* ================== I MIEI ORDINI (utente loggato) ==================
-   Restituisce SOLO gli ordini dell’utente autenticato (via Bearer).  */
+/* ================== I MIEI ORDINI (utente loggato) ================== */
 router.get('/my-orders', async (req, res) => {
   try {
     const accessToken = getBearer(req)
     if (!accessToken) return res.status(401).json({ error: 'Unauthorized' })
 
-    // ⚠️ Usa il client "anon" per auth.getUser(token)
-    const { data: userData, error: userErr } = await supabaseAuth.auth.getUser(accessToken)
-    if (userErr) {
-      console.error('[GET /my-orders] auth.getUser error:', userErr)
-      return res.status(401).json({ error: 'Invalid token' })
-    }
+    // utente dal token
+    const { data: userData, error: userErr } = await supabaseAdmin.auth.getUser(accessToken)
+    if (userErr) throw userErr
     const userId = userData?.user?.id
     if (!userId) return res.status(401).json({ error: 'Invalid token' })
 
+    // ordini dell'utente
     const { data, error } = await supabaseAdmin
       .from('orders')
       .select(`
@@ -127,8 +124,8 @@ router.get('/my-orders', async (req, res) => {
         customer_email,
         customer_phone,
         shipping_address,
-        courier,
-        tracking_code,
+        shipping_carrier,
+        shipping_tracking,
         order_items ( product_id, title, quantity, price_cents, image_url )
       `)
       .eq('user_id', userId)
@@ -136,6 +133,7 @@ router.get('/my-orders', async (req, res) => {
 
     if (error) throw error
 
+    // risposta "safe"
     const safe = (data || []).map(o => ({
       id: o.id,
       created_at: o.created_at,
@@ -144,21 +142,20 @@ router.get('/my-orders', async (req, res) => {
       customer_name: o.customer_name,
       customer_email: o.customer_email,
       customer_phone: o.customer_phone || null,
-      shipping_address: o.shipping_address,
-      courier: o.courier || null,
-      tracking_code: o.tracking_code || null,
+      shipping_address: o.shipping_address || null,
+      shipping_carrier: o.shipping_carrier || null,
+      shipping_tracking: o.shipping_tracking || null,
       items: (o.order_items || []).map(i => ({
         product_id: i.product_id,
         title: i.title,
         quantity: i.quantity,
         price_cents: i.price_cents,
-        image_url: i.image_url || null,
-      })),
+        image_url: i.image_url || null
+      }))
     }))
 
     res.json(safe)
   } catch (e) {
-    console.error('[GET /my-orders] error:', e)
     res.status(500).json({ error: e.message })
   }
 })
