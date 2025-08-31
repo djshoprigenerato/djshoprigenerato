@@ -1,26 +1,25 @@
 // client/src/pages/Checkout.jsx
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import axios from "axios";
 import { getCart, cartTotalCents } from "../store/cartStore";
 import { supabase } from "../supabaseClient";
+import { Link } from "react-router-dom";
 
 export default function Checkout(){
   const [items, setItems] = useState([]);
   const [discountCode, setDiscountCode] = useState('');
   const [discount, setDiscount] = useState(null);
-  const [showErrorsNote, setShowErrorsNote] = useState(false);
-  const [errors, setErrors] = useState({});
-  const firstErrorRef = useRef(null);
+  const [acceptTC, setAcceptTC] = useState(false);        // 👈 nuova spunta T&C
+  const [touched, setTouched] = useState({});             // per evidenziare i campi mancanti
 
   const [customer, setCustomer] = useState({
     name: '',
     email: '',
-    phone: '', // nuovo: telefono
+    phone: '',
     shipping: { address:'', city:'', zip:'', country:'IT' },
     user_id: null
   });
 
-  // carrello e utente
   useEffect(()=>{
     setItems(getCart());
     (async()=>{
@@ -29,8 +28,8 @@ export default function Checkout(){
         setCustomer(c => ({
           ...c,
           user_id: user.id,
-          email: user.email || c.email,
-          name: user.user_metadata?.name || c.name,
+          email: user.email || '',
+          name: user.user_metadata?.name || ''
         }));
       }
     })();
@@ -38,31 +37,6 @@ export default function Checkout(){
 
   const total = useMemo(()=> cartTotalCents(items), [items]);
 
-  /* -------------------- VALIDAZIONE -------------------- */
-  const validateCustomer = (c) => {
-    const e = {};
-    if (!c.name?.trim()) e.name = "Obbligatorio";
-    if (!c.email?.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.email)) e.email = "Email non valida";
-    if (!c.phone?.trim()) e.phone = "Obbligatorio";
-    if (!c.shipping?.address?.trim()) e.address = "Obbligatorio";
-    if (!c.shipping?.city?.trim()) e.city = "Obbligatorio";
-    if (!c.shipping?.zip?.trim()) e.zip = "Obbligatorio";
-    if (!c.shipping?.country?.trim()) e.country = "Obbligatorio";
-    return e;
-  };
-
-  // helper: imposta errori e mette a fuoco il primo campo errato
-  const showErrorsAndFocus = (errs) => {
-    setErrors(errs);
-    setShowErrorsNote(true);
-    // focus/scroll sul primo campo in errore
-    requestAnimationFrame(()=>{
-      const first = document.querySelector("[data-error='true']");
-      if (first) first.focus({ preventScroll:false });
-    });
-  };
-
-  /* -------------------- SCONTO -------------------- */
   const applyDiscount = async () => {
     if (!discountCode) return;
     try{
@@ -94,31 +68,51 @@ export default function Checkout(){
     return total;
   }, [total, discount]);
 
-  /* -------------------- PAY -------------------- */
+  // --- VALIDAZIONE -----------------------------------------------------------
+  const required = {
+    name: customer.name?.trim(),
+    email: customer.email?.trim(),
+    phone: customer.phone?.trim(),
+    address: customer.shipping.address?.trim(),
+    city: customer.shipping.city?.trim(),
+    zip: customer.shipping.zip?.trim(),
+    country: customer.shipping.country?.trim(),
+  };
+  const missingKeys = Object.entries(required)
+    .filter(([, val]) => !val)
+    .map(([key]) => key);
+
+  const isInvalid = (key) => touched[key] && !required[key];
+  const markAllTouched = () => {
+    setTouched({
+      name:true, email:true, phone:true,
+      address:true, city:true, zip:true, country:true,
+      tc:true
+    });
+  };
+
   const pay = async () => {
-    // 1) valida
-    const v = validateCustomer(customer);
-    if (Object.keys(v).length > 0) {
-      showErrorsAndFocus(v);
-      return; // blocca il pagamento se ci sono errori
+    // Se manca qualcosa, evidenzia e blocca
+    if (missingKeys.length > 0 || !acceptTC) {
+      markAllTouched();
+      if (!acceptTC) {
+        alert("Devi accettare i Termini e Condizioni per procedere.");
+      } else {
+        alert("Compila tutti i campi obbligatori.");
+      }
+      return;
     }
-    setShowErrorsNote(false);
-    setErrors({});
 
     try {
       const cartPayload = items.map(i => ({
         id: i.id,
         title: i.title,
         qty: i.qty,
-        price_cents: i.price_cents, // sempre centesimi
+        price_cents: i.price_cents,
         image_url: i.product_images?.[0]?.url || ''
       }));
-
-      // invio il telefono e tutti i dati cliente
       const res = await axios.post('/api/create-checkout-session', {
-        cart: cartPayload,
-        customer,
-        discount
+        cart: cartPayload, customer, discount
       });
       window.location.href = res.data.url;
     } catch {
@@ -126,123 +120,86 @@ export default function Checkout(){
     }
   };
 
-  // stile inline per errore (per evitare di toccare il CSS globale)
-  const errStyle = (key) => errors[key] ? { borderColor: '#ff4747', boxShadow: '0 0 0 2px rgba(255,71,71,.15)' } : {};
+  // stile bordo rosso per campi invalidi
+  const invalidStyle = (flag) => flag ? { borderColor: '#ff4d4f', outlineColor: '#ff4d4f' } : {};
 
   return (
     <div className="container">
       <h1>Checkout</h1>
-
-      {showErrorsNote && (
-        <div className="card" style={{
-          borderColor:'#ff6b6b', background:'#1b1212',
-          color:'#ffdede', marginBottom: 12
-        }}>
-          <strong>Attenzione:</strong> compila tutti i campi richiesti evidenziati in rosso.
-        </div>
-      )}
-
       <div className="card" style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:16}}>
         <div>
           <h3>Dati cliente</h3>
 
-          <label style={{color: errors.name ? '#ff8080' : undefined}}>Nome completo*</label>
+          <label>Nome completo</label>
           <input
-            data-error={!!errors.name}
-            aria-invalid={!!errors.name}
             value={customer.name}
-            onChange={e=>{
-              setCustomer({...customer, name:e.target.value});
-              if (errors.name) setErrors(prev=> ({...prev, name: undefined}));
-            }}
-            style={errStyle('name')}
-            required
+            onChange={e=>setCustomer({...customer, name:e.target.value})}
+            onBlur={()=>setTouched(t=>({...t, name:true}))}
+            style={invalidStyle(isInvalid('name'))}
+            placeholder="Nome e cognome"
           />
 
-          <label style={{color: errors.email ? '#ff8080' : undefined}}>Email*</label>
+          <label>Email</label>
           <input
-            data-error={!!errors.email}
-            aria-invalid={!!errors.email}
             value={customer.email}
-            onChange={e=>{
-              setCustomer({...customer, email:e.target.value});
-              if (errors.email) setErrors(prev=> ({...prev, email: undefined}));
-            }}
-            style={errStyle('email')}
-            required
+            onChange={e=>setCustomer({...customer, email:e.target.value})}
+            onBlur={()=>setTouched(t=>({...t, email:true}))}
+            style={invalidStyle(isInvalid('email'))}
+            type="email"
+            placeholder="email@esempio.com"
           />
 
-          <label style={{color: errors.phone ? '#ff8080' : undefined}}>Telefono*</label>
+          <label>Telefono</label>
           <input
-            data-error={!!errors.phone}
-            aria-invalid={!!errors.phone}
             value={customer.phone}
-            onChange={e=>{
-              setCustomer({...customer, phone:e.target.value});
-              if (errors.phone) setErrors(prev=> ({...prev, phone: undefined}));
-            }}
-            style={errStyle('phone')}
-            required
+            onChange={e=>setCustomer({...customer, phone:e.target.value})}
+            onBlur={()=>setTouched(t=>({...t, phone:true}))}
+            style={invalidStyle(isInvalid('phone'))}
+            placeholder="+39 ..."
           />
 
           <div className="form-row">
             <div>
-              <label style={{color: errors.address ? '#ff8080' : undefined}}>Indirizzo*</label>
+              <label>Indirizzo</label>
               <input
-                data-error={!!errors.address}
-                aria-invalid={!!errors.address}
                 value={customer.shipping.address}
-                onChange={e=>{
-                  setCustomer({...customer, shipping:{...customer.shipping, address:e.target.value}});
-                  if (errors.address) setErrors(prev=> ({...prev, address: undefined}));
-                }}
-                style={errStyle('address')}
-                required
+                onChange={e=>setCustomer({...customer, shipping:{...customer.shipping, address:e.target.value}})}
+                onBlur={()=>setTouched(t=>({...t, address:true}))}
+                style={invalidStyle(isInvalid('address'))}
+                placeholder="Via, civico, interno"
               />
             </div>
             <div>
-              <label style={{color: errors.city ? '#ff8080' : undefined}}>Città*</label>
+              <label>Città</label>
               <input
-                data-error={!!errors.city}
-                aria-invalid={!!errors.city}
                 value={customer.shipping.city}
-                onChange={e=>{
-                  setCustomer({...customer, shipping:{...customer.shipping, city:e.target.value}});
-                  if (errors.city) setErrors(prev=> ({...prev, city: undefined}));
-                }}
-                style={errStyle('city')}
-                required
+                onChange={e=>setCustomer({...customer, shipping:{...customer.shipping, city:e.target.value}})}
+                onBlur={()=>setTouched(t=>({...t, city:true}))}
+                style={invalidStyle(isInvalid('city'))}
+                placeholder="Città"
               />
             </div>
           </div>
 
           <div className="form-row">
             <div>
-              <label style={{color: errors.zip ? '#ff8080' : undefined}}>CAP*</label>
+              <label>CAP</label>
               <input
-                data-error={!!errors.zip}
-                aria-invalid={!!errors.zip}
                 value={customer.shipping.zip}
-                onChange={e=>{
-                  setCustomer({...customer, shipping:{...customer.shipping, zip:e.target.value}});
-                  if (errors.zip) setErrors(prev=> ({...prev, zip: undefined}));
-                }}
-                style={errStyle('zip')}
-                required
+                onChange={e=>setCustomer({...customer, shipping:{...customer.shipping, zip:e.target.value}})}
+                onBlur={()=>setTouched(t=>({...t, zip:true}))}
+                style={invalidStyle(isInvalid('zip'))}
+                placeholder="CAP"
               />
             </div>
             <div>
-              <label style={{color: errors.country ? '#ff8080' : undefined}}>Paese*</label>
+              <label>Paese</label>
               <input
-                data-error={!!errors.country}
-                aria-invalid={!!errors.country}
                 value={customer.shipping.country}
-                onChange={e=>{
-                  setCustomer({...customer, shipping:{...customer.shipping, country:e.target.value}});
-                  if (errors.country) setErrors(prev=> ({...prev, country: undefined}));
-                }}
-                style={errStyle('country')}
-                required
+                onChange={e=>setCustomer({...customer, shipping:{...customer.shipping, country:e.target.value}})}
+                onBlur={()=>setTouched(t=>({...t, country:true}))}
+                style={invalidStyle(isInvalid('country'))}
+                placeholder="IT"
               />
             </div>
           </div>
@@ -263,6 +220,28 @@ export default function Checkout(){
               {discount.amount_off_cents ? `(-${(discount.amount_off_cents/100).toFixed(2)}€)` : ''}
             </p>
           )}
+
+          {/* Checkbox Termini & Condizioni */}
+          <div style={{ marginTop: 18, paddingTop: 12, borderTop: '1px dashed #333' }}>
+            <label style={{ display:'flex', gap:8, alignItems:'flex-start' }}>
+              <input
+                type="checkbox"
+                checked={acceptTC}
+                onChange={e => setAcceptTC(e.target.checked)}
+                onBlur={()=>setTouched(t=>({...t, tc:true}))}
+                style={touched.tc && !acceptTC ? { outline: '2px solid #ff4d4f' } : {}}
+              />
+              <span>
+                Procedendo all’acquisto <strong>accetti</strong> tutti i{' '}
+                <Link to="/termini" target="_blank" rel="noreferrer">Termini e Condizioni</Link>.
+              </span>
+            </label>
+            {touched.tc && !acceptTC && (
+              <div style={{ color:'#ff4d4f', marginTop:6, fontSize:13 }}>
+                Devi accettare i Termini e Condizioni per continuare.
+              </div>
+            )}
+          </div>
         </div>
 
         <div>
@@ -279,12 +258,14 @@ export default function Checkout(){
           <h2>Totale: {(discountedTotalCents/100).toFixed(2)}€</h2>
           <p className="badge free">Consegna gratuita (SDA/GLS)</p>
 
-          {/* Nota errori accanto al bottone, per ulteriore visibilità */}
-          {showErrorsNote && (
-            <p style={{color:'#ff8a8a', marginTop: 6}}>Compila tutti i campi richiesti.</p>
-          )}
-
-          <button className="btn" onClick={pay}>Paga con Stripe</button>
+          <button
+            className="btn"
+            onClick={pay}
+          >
+            Paga con Stripe
+          </button>
+          {/* Se preferisci, puoi disabilitare il bottone finché non è tutto ok: */}
+          {/* disabled={missingKeys.length>0 || !acceptTC} */}
         </div>
       </div>
     </div>
