@@ -9,27 +9,47 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
   apiVersion: '2024-06-20',
 })
 
-// Se impostato, lo usiamo. Altrimenti ricaviamo l'origin dalla request.
+// Ricava la base URL: prima ENV, poi header proxy (Render), poi req.
 function getBaseUrl(req) {
   const envUrl = (process.env.PUBLIC_BASE_URL || '').trim()
-  if (envUrl && /^https?:\/\//i.test(envUrl)) return envUrl.replace(/\/+$/,'')
-  // X-Forwarded-* è presente su Render/Proxy
+  if (envUrl && /^https?:\/\//i.test(envUrl)) return envUrl.replace(/\/+$/, '')
   const proto = req.headers['x-forwarded-proto'] || req.protocol || 'https'
-  const host = req.headers['x-forwarded-host'] || req.headers.host
+  const host  = req.headers['x-forwarded-host']  || req.headers.host
   return `${proto}://${host}`
 }
 
 // ---------- CREATE CHECKOUT SESSION ----------
 router.post('/create-checkout-session', express.json(), async (req, res) => {
   try {
-    const { cart = [], customer, discount } = req.body || {}
+    const { cart = [], customer = {}, discount = null } = req.body || {}
 
     if (!Array.isArray(cart) || cart.length === 0) {
       return res.status(400).json({ error: 'Carrello vuoto' })
     }
 
-    // Line items (cent)
-    const line_items = cart.map((i) => {
+    // ---- Validazione campi obbligatori ----
+    const required = {
+      name: customer?.name,
+      email: customer?.email,
+      address: customer?.shipping?.address,
+      city: customer?.shipping?.city,
+      zip: customer?.shipping?.zip,
+      country: customer?.shipping?.country,
+      phone: customer?.phone, // <-- aspettati da Checkout.jsx
+    }
+
+    const missing = Object.entries(required)
+      .filter(([, v]) => !v || String(v).trim() === '')
+      .map(([k]) => k)
+
+    if (missing.length) {
+      return res.status(400).json({
+        error: `Campi obbligatori mancanti: ${missing.join(', ')}`,
+      })
+    }
+
+    // ---- Line items (in cent) ----
+    const line_items = cart.map(i => {
       const hasValidImage = i.image_url && /^https?:\/\//i.test(i.image_url)
       return {
         quantity: i.qty || 1,
@@ -44,15 +64,15 @@ router.post('/create-checkout-session', express.json(), async (req, res) => {
       }
     })
 
-    // Sconto una tantum su Stripe
-    let discounts = []
+    // ---- Sconto una tantum su Stripe ----
+    let discountsArr = []
     if (discount?.percent_off) {
       const coupon = await stripe.coupons.create({
         percent_off: Number(discount.percent_off),
         duration: 'once',
         name: discount.code || 'Sconto',
       })
-      discounts = [{ coupon: coupon.id }]
+      discountsArr = [{ coupon: coupon.id }]
     } else if (discount?.amount_off_cents) {
       const coupon = await stripe.coupons.create({
         amount_off: Number(discount.amount_off_cents),
@@ -60,14 +80,29 @@ router.post('/create-checkout-session', express.json(), async (req, res) => {
         duration: 'once',
         name: discount.code || 'Sconto',
       })
-      discounts = [{ coupon: coupon.id }]
+      discountsArr = [{ coupon: coupon.id }]
     }
 
-    // Metadati per il webhook
+    // ---- Metadata per il webhook ----
+    // Salviamo tutto ciò che serve per costruire l’ordine
+    const customer_json = JSON.stringify({
+      name: customer.name,
+      email: customer.email,
+      phone: customer.phone,
+      shipping: {
+        address: customer.shipping.address,
+        city: customer.shipping.city,
+        zip: customer.shipping.zip,
+        country: customer.shipping.country,
+      },
+      user_id: customer.user_id || null,
+    })
+
     const metadata = {
       user_id: customer?.user_id || '',
       discount_code_id: discount?.id ? String(discount.id) : '',
-      cart_json: JSON.stringify(cart.slice(0, 50)),
+      cart_json: JSON.stringify(cart.slice(0, 50)), // difensivo
+      customer_json, // <--- i dati del tuo form (incluso telefono)
     }
 
     const BASE_URL = getBaseUrl(req)
@@ -77,9 +112,11 @@ router.post('/create-checkout-session', express.json(), async (req, res) => {
       success_url: `${BASE_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${BASE_URL}/cancel`,
       line_items,
-      discounts,
+      discounts: discountsArr,
       customer_email: customer?.email || undefined,
       metadata,
+      // Possiamo anche NON chiedere l'indirizzo a Stripe, ci bastano i nostri dati
+      // Lasciamo comunque la collection solo per paesi consentiti (opzionale):
       shipping_address_collection: {
         allowed_countries: ['IT', 'FR', 'ES', 'DE', 'AT', 'BE', 'NL'],
       },
@@ -88,13 +125,16 @@ router.post('/create-checkout-session', express.json(), async (req, res) => {
     return res.json({ url: session.url })
   } catch (e) {
     console.error('create-checkout-session error:', e?.raw || e)
-    return res.status(400).json({ error: e?.raw?.message || e?.message || 'Errore' })
+    return res
+      .status(400)
+      .json({ error: e?.raw?.message || e?.message || 'Errore' })
   }
 })
 
 // ---------- WEBHOOK ----------
 router.post(
   '/webhooks/stripe',
+  // ATTENZIONE: raw body per la verifica firma
   express.raw({ type: 'application/json' }),
   async (req, res) => {
     const sig = req.headers['stripe-signature']
@@ -125,20 +165,45 @@ router.post(
           metadata,
         } = session
 
+        // ---- Ricostruisci carrello ----
         let cart = []
         try { cart = JSON.parse(metadata?.cart_json || '[]') } catch {}
 
-        // ORDINE
+        // ---- Ricostruisci dati cliente dal tuo form (preferiti) ----
+        let customerMeta = null
+        try { customerMeta = JSON.parse(metadata?.customer_json || 'null') } catch {}
+
+        // Se presenti nei metadata (inviati dal tuo form), usali. Altrimenti fallback a Stripe.
+        const customer_name  = customerMeta?.name || customer_details?.name || null
+        const customer_email = customerMeta?.email || customer_details?.email || null
+        const customer_phone = customerMeta?.phone || customer_details?.phone || null
+
+        // Costruiamo un JSON di shipping coerente coi tuoi campi (includiamo telefono)
+        const shipping_address =
+          customerMeta?.shipping
+            ? {
+                ...customerMeta.shipping,
+                phone: customer_phone || null,
+              }
+            : (customer_details?.address
+                ? { ...customer_details.address, phone: customer_phone || null }
+                : { phone: customer_phone || null })
+
+        // ---- Crea ordine ----
         const orderPayload = {
-          user_id: metadata?.user_id || null,
-          customer_email: customer_details?.email || null,
-          customer_name: customer_details?.name || null,
-          shipping_address: customer_details?.address || null,
+          user_id: (metadata?.user_id || null) || customerMeta?.user_id || null,
+          customer_email,
+          customer_name,
+          shipping_address, // jsonb (contiene anche phone)
           status: 'paid',
           total_cents: amount_total || 0,
-          discount_code_id: metadata?.discount_code_id ? Number(metadata.discount_code_id) : null,
+          discount_code_id: metadata?.discount_code_id
+            ? Number(metadata.discount_code_id)
+            : null,
           stripe_payment_intent_id:
-            typeof payment_intent === 'string' ? payment_intent : payment_intent?.id || null,
+            typeof payment_intent === 'string'
+              ? payment_intent
+              : payment_intent?.id || null,
           stripe_session_id,
         }
 
@@ -150,8 +215,8 @@ router.post(
 
         if (orderErr) throw orderErr
 
-        // RIGHE ORDINE
-        const itemsPayload = cart.map((i) => ({
+        // ---- Righe ordine ----
+        const itemsPayload = cart.map(i => ({
           order_id: order.id,
           product_id: i.id,
           title: i.title || '',
@@ -170,10 +235,10 @@ router.post(
         console.log('✅ Ordine creato:', order.id, 'session:', stripe_session_id)
       }
 
+      // Sempre 200 OK, altrimenti Stripe ritenta
       res.json({ received: true })
     } catch (e) {
       console.error('Webhook handling error:', e)
-      // Manteniamo 200 per evitare retry loop
       res.json({ received: true })
     }
   }
