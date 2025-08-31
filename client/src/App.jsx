@@ -1,6 +1,7 @@
 // client/src/App.jsx
 import { BrowserRouter, Routes, Route } from "react-router-dom"
 import Navbar from "./components/Navbar"
+import Footer from "./components/Footer"          // ⟵ nuovo
 import Home from "./pages/Home"
 import Products from "./pages/Products"
 import ProductDetails from "./pages/ProductDetails"
@@ -13,7 +14,7 @@ import Terms from "./pages/Terms"
 import AdminDashboard from "./pages/AdminDashboard"
 import SuccessPage from "./pages/SuccessPage"
 import Toast from "./components/Toast"
-import About from "./pages/About.jsx"; 
+import About from "./pages/About.jsx"
 
 export default function App(){
   return (
@@ -31,9 +32,10 @@ export default function App(){
         <Route path="/termini" element={<Terms />} />
         <Route path="/admin" element={<AdminDashboard />} />
         <Route path="/success" element={<SuccessPage />} />
-        <Route path="*" element={<Home />} />
-        <Route path="/chi-siamo" element={<About />} /> 
+        <Route path="/chi-siamo" element={<About />} />
+        <Route path="*" element={<Home />} />       {/* wildcard SEMPRE per ultima */}
       </Routes>
+      <Footer />                                    {/* ⟵ visibile su tutte le pagine */}
       <Toast />
     </BrowserRouter>
   )
