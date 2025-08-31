@@ -1,10 +1,34 @@
 // server/routes/admin.js
 import express from 'express'
+import nodemailer from 'nodemailer'
 import { supabaseAdmin } from '../supabase.js'
 import { requireAdmin } from '../utils/auth.js'
 
 const router = express.Router()
 const UPLOADS_BUCKET = process.env.UPLOADS_BUCKET || 'uploads'
+
+// ----------------------- MAILER -----------------------
+const mailer = nodemailer.createTransport({
+  host: process.env.SMTP_HOST,
+  port: Number(process.env.SMTP_PORT || 587),
+  secure: process.env.SMTP_SECURE === 'true', // true per 465, false per 587
+  auth: (process.env.SMTP_USER && process.env.SMTP_PASS) ? {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS
+  } : undefined
+})
+
+// mittente di default
+const DEFAULT_FROM = process.env.SMTP_FROM || 'ordini@djshoprigenerato.eu'
+
+// tracking URL
+function buildTrackingUrl(carrier, code) {
+  if (!carrier || !code) return null
+  const c = String(carrier).toLowerCase()
+  if (c === 'gls') return `https://gls-group.com/IT/it/servizi-online/ricerca-spedizioni/?match=${encodeURIComponent(code)}&type=NAT`
+  if (c === 'sda') return `https://www.poste.it/cerca/index.html#/risultati-spedizioni/${encodeURIComponent(code)}`
+  return null
+}
 
 // protezione admin per tutte le rotte qui sotto
 router.use(requireAdmin)
@@ -14,7 +38,7 @@ router.get('/categories', async (_req, res) => {
   const { data, error } = await supabaseAdmin
     .from('categories')
     .select('*')
-    .order('id')
+  .order('id')
   if (error) return res.status(500).json({ error: error.message })
   res.json(data || [])
 })
@@ -254,17 +278,17 @@ router.delete('/discounts/:id', async (req, res) => {
 })
 
 /* ============================= ORDERS ============================= */
-// elenco (read-only)
+// elenco (ora includo anche campi spedizione utili in admin)
 router.get('/orders', async (_req, res) => {
   const { data, error } = await supabaseAdmin
     .from('orders')
-    .select('id, created_at, status, total_cents, customer_name, customer_email')
+    .select('id, created_at, status, total_cents, customer_name, customer_email, shipping_carrier, tracking_code, shipping_tracking_url')
     .order('id', { ascending: false })
   if (error) return res.status(500).json({ error: error.message })
   res.json(data || [])
 })
 
-// dettaglio
+// dettaglio (includo campi spedizione)
 router.get('/orders/:id', async (req, res) => {
   const id = req.params.id
   const { data: order, error } = await supabaseAdmin
@@ -278,6 +302,67 @@ router.get('/orders/:id', async (req, res) => {
     .select('*')
     .eq('order_id', id)
   res.json({ ...order, order_items: items || [] })
+})
+
+// aggiorna corriere + tracking e invia email al cliente
+router.put('/orders/:id/shipment', async (req, res) => {
+  try {
+    const id = Number(req.params.id)
+    let { carrier, tracking } = req.body || {}
+    if (!carrier || !tracking) {
+      return res.status(400).json({ error: 'carrier e tracking sono obbligatori' })
+    }
+    carrier = String(carrier).toLowerCase()
+    if (!['gls','sda'].includes(carrier)) {
+      return res.status(400).json({ error: 'carrier non valido: usa gls o sda' })
+    }
+
+    const url = buildTrackingUrl(carrier, tracking)
+
+    // aggiorna ordine
+    const { data: updated, error: updErr } = await supabaseAdmin
+      .from('orders')
+      .update({
+        shipping_carrier: carrier,
+        tracking_code: tracking,
+        shipping_tracking_url: url,
+        status: 'shipped'
+      })
+      .eq('id', id)
+      .select('id, customer_email, customer_name, shipping_carrier, tracking_code, shipping_tracking_url, created_at')
+      .single()
+    if (updErr) throw updErr
+
+    // invia email (best-effort)
+    try {
+      if (updated?.customer_email) {
+        const html = `
+          <div style="font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;line-height:1.5">
+            <h2>Il tuo ordine #${updated.id} è stato spedito</h2>
+            <p>Ciao ${updated.customer_name || ''},</p>
+            <p>ti informiamo che il tuo ordine #${updated.id} del ${new Date(updated.created_at).toLocaleString()} è stato affidato al corriere <strong>${updated.shipping_carrier?.toUpperCase()}</strong>.</p>
+            <p>Codice di tracking: <strong>${updated.tracking_code}</strong></p>
+            ${updated.shipping_tracking_url ? `<p>Puoi seguire la spedizione da qui: <a href="${updated.shipping_tracking_url}">${updated.shipping_tracking_url}</a></p>` : ''}
+            <hr/>
+            <p>Grazie per aver scelto DJ Shop Rigenerato!</p>
+          </div>
+        `
+        await mailer.sendMail({
+          from: DEFAULT_FROM,
+          to: updated.customer_email,
+          subject: `Il tuo ordine #${updated.id} è stato spedito`,
+          html
+        })
+      }
+    } catch (mailErr) {
+      console.warn('Mailer error:', mailErr?.message || mailErr)
+      // non blocchiamo la risposta admin se l'email fallisce
+    }
+
+    res.json(updated)
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
 })
 
 /* ============================== PAGES ============================= */
