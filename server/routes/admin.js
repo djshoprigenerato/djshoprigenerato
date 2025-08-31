@@ -278,30 +278,41 @@ router.delete('/discounts/:id', async (req, res) => {
 })
 
 /* ============================= ORDERS ============================= */
-// elenco (ora includo anche campi spedizione utili in admin)
+// elenco (con campi utili + righe articoli per export)
 router.get('/orders', async (_req, res) => {
   const { data, error } = await supabaseAdmin
     .from('orders')
-    .select('id, created_at, status, total_cents, customer_name, customer_email, shipping_carrier, tracking_code, shipping_tracking_url')
+    .select(`
+      id,
+      created_at,
+      status,
+      total_cents,
+      customer_name,
+      customer_email,
+      customer_phone,
+      shipping_address,
+      shipping_carrier,
+      shipping_tracking,
+      order_items ( title, quantity, price_cents )
+    `)
     .order('id', { ascending: false })
   if (error) return res.status(500).json({ error: error.message })
   res.json(data || [])
 })
 
-// dettaglio (includo campi spedizione)
+// dettaglio (tutti i campi + righe)
 router.get('/orders/:id', async (req, res) => {
   const id = req.params.id
   const { data: order, error } = await supabaseAdmin
     .from('orders')
-    .select('*')
+    .select(`
+      *,
+      order_items ( id, title, quantity, price_cents, image_url )
+    `)
     .eq('id', id)
-    .single()
+    .maybeSingle()
   if (error) return res.status(500).json({ error: error.message })
-  const { data: items } = await supabaseAdmin
-    .from('order_items')
-    .select('*')
-    .eq('order_id', id)
-  res.json({ ...order, order_items: items || [] })
+  res.json(order || {})
 })
 
 // aggiorna corriere + tracking e invia email al cliente
