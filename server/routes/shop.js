@@ -1,10 +1,10 @@
 // server/routes/shop.js
 import express from 'express'
-import { supabaseAuth } from '../supabase.js'
+import { supabaseAuth, supabaseAdmin } from '../supabase.js'
 
 const router = express.Router()
 
-// ---- PRODOTTI PUBBLICI ----
+/* ================== PRODOTTI PUBBLICI ================== */
 router.get('/products', async (req, res) => {
   try {
     const { q, category_id, id } = req.query
@@ -34,7 +34,7 @@ router.get('/products', async (req, res) => {
   }
 })
 
-// ---- CATEGORIE PUBBLICHE ----
+/* ================== CATEGORIE PUBBLICHE ================== */
 router.get('/categories', async (_req, res) => {
   try {
     const { data, error } = await supabaseAuth
@@ -48,7 +48,7 @@ router.get('/categories', async (_req, res) => {
   }
 })
 
-// ---- PAGINE PUBBLICHE ----
+/* ================== PAGINE PUBBLICHE ================== */
 router.get('/pages/:slug', async (req, res) => {
   try {
     const { slug } = req.params
@@ -70,7 +70,7 @@ router.get('/pages/:slug', async (req, res) => {
   }
 })
 
-// ---- CODICI SCONTO PUBBLICI ----
+/* ================== CODICI SCONTO PUBBLICI ================== */
 router.get('/discounts/:code', async (req, res) => {
   const code = (req.params.code || '').trim()
   try {
@@ -89,26 +89,58 @@ router.get('/discounts/:code', async (req, res) => {
   }
 })
 
-export default router
-
-// in fondo al tuo server/routes/shop.js
-router.get('/orders/by-session', async (req, res) => {
+/* ================== ORDER RECAP BY STRIPE SESSION ==================
+   Usato dalla SuccessPage per mostrare il riepilogo e triggerare lo
+   svuotamento del carrello solo quando l’ordine esiste davvero.     */
+router.get('/orders/by-session/:sid', async (req, res) => {
   try {
-    const { session_id } = req.query
-    if (!session_id) return res.status(400).json({ error: 'session_id mancante' })
+    const sid = req.params.sid
+    if (!sid) return res.status(400).json({ error: 'missing session id' })
 
-    const { data: order, error } = await supabaseAuth
+    // NB: usiamo supabaseAdmin per bypassare RLS sui dettagli ordine.
+    const { data: order, error } = await supabaseAdmin
       .from('orders')
       .select(`
-        id, created_at, total_cents, status, customer_name, customer_email,
+        id,
+        user_id,
+        customer_email,
+        customer_name,
+        shipping_address,
+        status,
+        total_cents,
+        discount_code_id,
+        created_at,
         order_items ( product_id, title, quantity, price_cents, image_url )
       `)
-      .eq('stripe_session_id', session_id)
+      .eq('stripe_session_id', sid)
       .maybeSingle()
 
     if (error) throw error
-    res.json(order) // può essere null se webhook non ha ancora scritto
+    if (!order) return res.status(404).json({ error: 'not found' })
+
+    // Risposta “safe” per il client
+    const safe = {
+      id: order.id,
+      created_at: order.created_at,
+      status: order.status,
+      customer_name: order.customer_name,
+      customer_email: order.customer_email,
+      shipping_address: order.shipping_address,
+      total_cents: order.total_cents,
+      discount_code_id: order.discount_code_id || null,
+      items: (order.order_items || []).map(i => ({
+        product_id: i.product_id,
+        title: i.title,
+        quantity: i.quantity,
+        price_cents: i.price_cents,
+        image_url: i.image_url || null
+      }))
+    }
+
+    res.json(safe)
   } catch (e) {
     res.status(500).json({ error: e.message })
   }
 })
+
+export default router
