@@ -41,56 +41,91 @@ export default function Orders() {
     return null;
   }
 
-  // stampa SOLO il riquadro dei dettagli
+  // stampa SOLO il riquadro dei dettagli - versione affidabile via iframe
   const printDetail = () => {
-    if (!detailRef.current) return;
-    const html = detailRef.current.outerHTML;
+    const box = detailRef.current;
+    if (!box) return;
 
-    const win = window.open("", "_blank", "noopener,noreferrer");
-    if (!win) return;
+    const content = box.outerHTML;
 
-    win.document.write(`
+    const styles = `
+      @page { size: A4; margin: 14mm; }
+      * { box-sizing: border-box; }
+      body {
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+        background: #fff;
+        color: #111;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+        margin: 0;
+        padding: 0;
+      }
+      .print-card {
+        border: 1px solid #ddd;
+        border-radius: 10px;
+        padding: 18px;
+        margin: 0;
+      }
+      h2 { margin: 0 0 10px; }
+      h3 { margin: 16px 0 8px; }
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 24px;
+      }
+      .muted { opacity: .7; }
+      table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+      th, td { padding: 8px 10px; border-bottom: 1px solid #e6e6e6; text-align: left; }
+      th { font-weight: 600; }
+      .right { text-align: right; }
+      .badge { display:inline-block; padding:2px 8px; border-radius: 999px; background:#f1f5f9; }
+      .small { font-size: 12px; }
+      @media print { html, body { height: auto; } }
+    `;
+
+    // Crea iframe invisibile
+    const iframe = document.createElement("iframe");
+    iframe.style.position = "fixed";
+    iframe.style.right = "0";
+    iframe.style.bottom = "0";
+    iframe.style.width = "0";
+    iframe.style.height = "0";
+    iframe.style.border = "0";
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentWindow?.document;
+    if (!doc) return;
+
+    doc.open();
+    doc.write(`
+      <!doctype html>
       <html>
         <head>
           <meta charset="utf-8" />
-          <title>Ordine #${detail?.id || ""}</title>
-          <style>
-            @page { size: A4; margin: 14mm; }
-            * { box-sizing: border-box; }
-            body {
-              font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-              background: #fff;
-              color: #111;
-              -webkit-print-color-adjust: exact;
-              print-color-adjust: exact;
-            }
-            .print-card {
-              border: 1px solid #ddd;
-              border-radius: 10px;
-              padding: 18px;
-            }
-            h2 { margin: 0 0 10px; }
-            h3 { margin: 16px 0 8px; }
-            .grid {
-              display: grid;
-              grid-template-columns: 1fr 1fr;
-              gap: 24px;
-            }
-            .muted { opacity: .7; }
-            table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-            th, td { padding: 8px 10px; border-bottom: 1px solid #e6e6e6; text-align: left; }
-            th { font-weight: 600; }
-            .right { text-align: right; }
-            .badge { display:inline-block; padding:2px 8px; border-radius: 999px; background:#f1f5f9; }
-            .small { font-size: 12px; }
-          </style>
+          <title>Ordine #${detail?.id ?? ""}</title>
+          <style>${styles}</style>
         </head>
-        <body>${html}</body>
+        <body>
+          ${content}
+        </body>
       </html>
     `);
-    win.document.close();
-    // attendo che il contenuto venga inserito
-    setTimeout(() => { win.print(); win.close(); }, 150);
+    doc.close();
+
+    const doPrint = () => {
+      try {
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+      } finally {
+        setTimeout(() => document.body.removeChild(iframe), 500);
+      }
+    };
+
+    if (doc.readyState === "complete") {
+      setTimeout(doPrint, 100);
+    } else {
+      iframe.onload = () => setTimeout(doPrint, 100);
+    }
   };
 
   return (
