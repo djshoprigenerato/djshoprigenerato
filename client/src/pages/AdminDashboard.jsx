@@ -36,6 +36,37 @@ async function getAuthConfig(maxTries = 10, delayMs = 100) {
   return { headers: { 'Content-Type': 'application/json' } }
 }
 
+/* ======== UI HELPERS (stato italiano + indirizzo formattato) ======== */
+function statusLabel(s){
+  const map = {
+    paid: "Pagato",
+    processing: "In lavorazione",
+    shipped: "Spedito",
+    refunded: "Rimborsato",
+    cancelled: "Annullato",
+  }
+  return map[s] || s || "-"
+}
+
+function AddressBlock({ addr }){
+  if(!addr) return <span>-</span>
+  const line1 = addr.line1 || ""
+  const line2 = addr.line2 ? ` ${addr.line2}` : ""
+  const cap = addr.postal_code || ""
+  const city = addr.city || ""
+  const state = addr.state ? ` (${addr.state})` : ""
+  const country = addr.country || ""
+  return (
+    <div style={{whiteSpace:'pre-wrap'}}>
+      {`${line1}${line2}`}
+      <br/>
+      {`${cap} ${city}${state}`}
+      <br/>
+      {country}
+    </div>
+  )
+}
+
 /* ======================= PRODOTTI ======================= */
 function ProductsAdmin(){
   const [items, setItems] = useState([])
@@ -493,7 +524,7 @@ function OrdersAdmin(){
           <tr key={o.id}>
             <td>#{o.id}</td>
             <td>{new Date(o.created_at).toLocaleString()}</td>
-            <td>{o.status}</td>
+            <td>{statusLabel(o.status)}</td>
             <td>{o.customer_name}</td>
             <td>{o.customer_email}</td>
             <td>{o.customer_phone||o.shipping_phone||""}</td>
@@ -542,9 +573,15 @@ function OrderDetailCard({ detail, onClose, onSaved }){
         <strong>Telefono:</strong> {detail.customer_phone||detail.shipping_phone||"-"}
       </p>
 
-      <pre style={{whiteSpace:'pre-wrap'}}>{JSON.stringify(detail.shipping_address, null, 2)}</pre>
+      {/* Indirizzo di spedizione formattato */}
+      <div>
+        <strong>Indirizzo:</strong>
+        <div style={{marginTop:4}}>
+          <AddressBlock addr={detail.shipping_address} />
+        </div>
+      </div>
 
-      <table className="table">
+      <table className="table" style={{marginTop:10}}>
         <thead><tr><th>Articolo</th><th>Q.tà</th><th>Prezzo</th></tr></thead>
         <tbody>{(detail.order_items||[]).map((it,idx) => (
           <tr key={idx}><td>{it.title}</td><td>{it.quantity}</td><td>{(it.price_cents/100).toFixed(2)}€</td></tr>
