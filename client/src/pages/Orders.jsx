@@ -1,174 +1,211 @@
 // client/src/pages/Orders.jsx
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import { supabase } from "../supabaseClient";
 
-function statusLabel(s){
-  const map = { paid:"Pagato", processing:"In lavorazione", shipped:"Spedito", refunded:"Rimborsato", cancelled:"Annullato" };
-  return map[s] || s || "-";
-}
-
-function AddressBlock({ addr }){
-  if(!addr) return <span>-</span>;
-  const line1 = addr.line1 || "";
-  const line2 = addr.line2 ? ` ${addr.line2}` : "";
-  const cap = addr.postal_code || "";
-  const city = addr.city || "";
-  const state = addr.state ? ` (${addr.state})` : "";
-  const country = addr.country || "";
-  return (
-    <div>
-      {`${line1}${line2}`}<br/>
-      {`${cap} ${city}${state}`}<br/>
-      {country}
-    </div>
-  );
-}
-
-function buildTrackingUrl(carrier, code){
-  if(!carrier || !code) return null;
-  const c = String(carrier).toLowerCase();
-  if (c === "gls") return `https://gls-group.com/IT/it/servizi-online/ricerca-spedizioni/?match=${encodeURIComponent(code)}&type=NAT`;
-  if (c === "sda") return `https://www.poste.it/cerca/index.html#/risultati-spedizioni/${encodeURIComponent(code)}`;
-  return null;
-}
-
-// compat: supporta più nomi di campo
-function getCarrier(o){ return o?.shipping_carrier || o?.courier || o?.carrier || null; }
-function getTrackingCode(o){ return o?.tracking_code || o?.shipping_tracking || o?.tracking || null; }
-function getTrackingUrl(o){
-  return o?.shipping_tracking_url || buildTrackingUrl(getCarrier(o), getTrackingCode(o));
-}
-
-export default function OrdersPage(){
+export default function Orders() {
   const [orders, setOrders] = useState([]);
-  const [detail, setDetail] = useState(null);
-  const [loadingDetail, setLoadingDetail] = useState(false);
+  const [detail, setDetail] = useState(null); // ordine aperto nel riquadro
+  const detailRef = useRef(null);
 
-  // carica lista ordini (con eventuali items se presenti)
   useEffect(() => {
     (async () => {
-      try{
-        const { data: { session } } = await supabase.auth.getSession();
-        const token = session?.access_token;
-        const cfg = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
-        const { data } = await axios.get("/api/shop/my-orders", cfg);
-        setOrders(data || []);
-      }catch(e){
-        console.error("Errore caricamento ordini:", e);
-        setOrders([]);
-      }
-    })();
+      // prendo il bearer da supabase
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token || "";
+      const cfg = { headers: { Authorization: `Bearer ${token}` } };
+      const { data } = await axios.get("/api/shop/my-orders", cfg);
+      setOrders(data || []);
+    })().catch(() => setOrders([]));
   }, []);
 
-  // apre dettaglio; se mancano articoli, ricarica quell’ordine dalla fonte
-  const openDetail = async (o) => {
-    const hasItems = (o?.items && o.items.length) || (o?.order_items && o.order_items.length);
-    if (hasItems) { setDetail(o); return; }
-    try{
-      setLoadingDetail(true);
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
-      const cfg = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
-      const { data } = await axios.get("/api/shop/my-orders", cfg);
-      const full = (data||[]).find(x => x.id === o.id);
-      setDetail(full || o); // fallback a o
-    }catch(e){
-      console.error("Errore apertura dettaglio:", e);
-      setDetail(o);
-    }finally{
-      setLoadingDetail(false);
+  // ordini ordinati dal più recente
+  const sorted = useMemo(
+    () => [...orders].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)),
+    [orders]
+  );
+
+  const open = (o) => setDetail(o);
+  const close = () => setDetail(null);
+
+  // costruisce l’URL di tracking
+  function trackingUrl(carrier, code) {
+    if (!carrier || !code) return null;
+    const c = String(carrier).toLowerCase();
+    if (c === "gls") {
+      return `https://gls-group.com/IT/it/servizi-online/ricerca-spedizioni/?match=${encodeURIComponent(code)}&type=NAT`;
     }
+    if (c === "sda") {
+      return `https://www.poste.it/cerca/index.html#/risultati-spedizioni/${encodeURIComponent(code)}`;
+    }
+    return null;
+  }
+
+  // stampa SOLO il riquadro dei dettagli
+  const printDetail = () => {
+    if (!detailRef.current) return;
+    const html = detailRef.current.outerHTML;
+
+    const win = window.open("", "_blank", "noopener,noreferrer");
+    if (!win) return;
+
+    win.document.write(`
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>Ordine #${detail?.id || ""}</title>
+          <style>
+            @page { size: A4; margin: 14mm; }
+            * { box-sizing: border-box; }
+            body {
+              font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+              background: #fff;
+              color: #111;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+            }
+            .print-card {
+              border: 1px solid #ddd;
+              border-radius: 10px;
+              padding: 18px;
+            }
+            h2 { margin: 0 0 10px; }
+            h3 { margin: 16px 0 8px; }
+            .grid {
+              display: grid;
+              grid-template-columns: 1fr 1fr;
+              gap: 24px;
+            }
+            .muted { opacity: .7; }
+            table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+            th, td { padding: 8px 10px; border-bottom: 1px solid #e6e6e6; text-align: left; }
+            th { font-weight: 600; }
+            .right { text-align: right; }
+            .badge { display:inline-block; padding:2px 8px; border-radius: 999px; background:#f1f5f9; }
+            .small { font-size: 12px; }
+          </style>
+        </head>
+        <body>${html}</body>
+      </html>
+    `);
+    win.document.close();
+    // attendo che il contenuto venga inserito
+    setTimeout(() => { win.print(); win.close(); }, 150);
   };
 
   return (
     <div className="container">
       <h1>I miei ordini</h1>
 
-      {orders.length === 0 && (
-        <div className="card"><p>Nessun ordine trovato.</p></div>
-      )}
-
-      {orders.length > 0 && (
-        <div className="card">
+      {/* LISTA ORDINI */}
+      <div className="card">
+        {sorted.length === 0 ? (
+          <p className="muted">Nessun ordine trovato.</p>
+        ) : (
           <table className="table">
             <thead>
               <tr>
-                <th>#</th><th>Data</th><th>Stato</th><th>Totale</th><th></th>
+                <th>#</th>
+                <th>Data</th>
+                <th>Stato</th>
+                <th className="right">Totale</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
-              {orders.map(o => (
+              {sorted.map(o => (
                 <tr key={o.id}>
                   <td>#{o.id}</td>
                   <td>{new Date(o.created_at).toLocaleString()}</td>
-                  <td>{statusLabel(o.status)}</td>
-                  <td>{(o.total_cents/100).toFixed(2)}€</td>
-                  <td><button className="btn ghost" onClick={()=>openDetail(o)}>Dettagli</button></td>
+                  <td>{o.status === "shipped" ? "Spedito" : o.status === "paid" ? "Pagato" : o.status}</td>
+                  <td className="right">{(o.total_cents/100).toFixed(2)}€</td>
+                  <td><button className="btn ghost" onClick={() => open(o)}>Dettagli</button></td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
-      )}
+        )}
+      </div>
 
+      {/* DETTAGLIO ORDINE */}
       {detail && (
-        <div className="card" style={{marginTop:16}}>
-          <div style={{display:"flex", justifyContent:"space-between", alignItems:"center"}}>
-            <h3 style={{margin:0}}>Dettaglio ordine #{detail.id}</h3>
-            {loadingDetail && <span style={{opacity:.7, fontSize:12}}>caricamento…</span>}
-          </div>
+        <div className="card" style={{ marginTop: 16 }}>
+          {/* Il contenuto da stampare è dentro .print-card */}
+          <div ref={detailRef} className="print-card">
+            <h2>Dettaglio ordine #{detail.id}</h2>
 
-          <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:16}}>
-            <div>
-              <p><strong>Stato:</strong> {statusLabel(detail.status)}</p>
-              <p><strong>Data:</strong> {new Date(detail.created_at).toLocaleString()}</p>
-              <p><strong>Totale:</strong> {(detail.total_cents/100).toFixed(2)}€</p>
-              <p><strong>Nome:</strong> {detail.customer_name || "-"}</p>
-              <p><strong>Email:</strong> {detail.customer_email || "-"}</p>
-              <p><strong>Telefono:</strong> {detail.customer_phone || "-"}</p>
+            <div className="grid">
+              <div>
+                <p><strong>Stato:</strong> {detail.status === "shipped" ? "Spedito" : detail.status === "paid" ? "Pagato" : detail.status}</p>
+                <p><strong>Data:</strong> {new Date(detail.created_at).toLocaleString()}</p>
+                <p><strong>Totale:</strong> {(detail.total_cents/100).toFixed(2)}€</p>
+
+                <p style={{ marginTop: 10 }}>
+                  <strong>Nome:</strong> {detail.customer_name || "-"}<br />
+                  <strong>Email:</strong> {detail.customer_email || "-"}<br />
+                  <strong>Telefono:</strong> {detail.customer_phone || "-"}
+                </p>
+              </div>
+
+              <div>
+                <h3>Spedizione</h3>
+                <p><strong>Corriere:</strong> {(detail.shipping_carrier || "-").toUpperCase()}</p>
+                <p>
+                  <strong>Tracking:</strong>{" "}
+                  {detail.tracking_code ? (
+                    (() => {
+                      const url = trackingUrl(detail.shipping_carrier, detail.tracking_code);
+                      return url ? (
+                        <a href={url} target="_blank" rel="noreferrer">{detail.tracking_code}</a>
+                      ) : (
+                        detail.tracking_code
+                      );
+                    })()
+                  ) : "-"}
+                </p>
+
+                {detail.shipping_address && (
+                  <>
+                    <h3 style={{ marginTop: 12 }}>Indirizzo:</h3>
+                    <address className="small" style={{ fontStyle: "normal", lineHeight: 1.35 }}>
+                      {detail.shipping_address.line1 || ""}{detail.shipping_address.line2 ? `, ${detail.shipping_address.line2}` : ""}<br />
+                      {detail.shipping_address.postal_code || ""}{" "}
+                      {detail.shipping_address.city || ""}{" "}
+                      {detail.shipping_address.state ? `(${detail.shipping_address.state})` : ""}<br />
+                      {detail.shipping_address.country || ""}
+                    </address>
+                  </>
+                )}
+              </div>
             </div>
 
-            <div>
-              <p><strong>Spedizione</strong></p>
-              <p><strong>Corriere:</strong> {(getCarrier(detail) || "-")?.toString().toUpperCase()}</p>
-              <p>
-                <strong>Tracking:</strong>{" "}
-                {getTrackingCode(detail) ? (
-                  getTrackingUrl(detail) ? (
-                    <a href={getTrackingUrl(detail)} target="_blank" rel="noreferrer">
-                      {getTrackingCode(detail)}
-                    </a>
-                  ) : (
-                    getTrackingCode(detail)
-                  )
-                ) : "-"}
-              </p>
-              <p><strong>Indirizzo:</strong></p>
-              <AddressBlock addr={detail.shipping_address} />
-            </div>
-          </div>
-
-          <h4 style={{marginTop:16}}>Articoli</h4>
-          <table className="table">
-            <thead><tr><th>Articolo</th><th>Q.tà</th><th>Prezzo</th></tr></thead>
-            <tbody>
-              {((detail.items && detail.items.length ? detail.items : detail.order_items) || []).map((it, idx) => (
-                <tr key={idx}>
-                  <td>{it.title}</td>
-                  <td>{it.quantity}</td>
-                  <td>{(it.price_cents/100).toFixed(2)}€</td>
+            <h3 style={{ marginTop: 18 }}>Articoli</h3>
+            <table>
+              <thead>
+                <tr>
+                  <th>Articolo</th>
+                  <th className="right">Q.tà</th>
+                  <th className="right">Prezzo</th>
                 </tr>
-              ))}
-              {(!detail.items || detail.items.length === 0) && (!detail.order_items || detail.order_items.length === 0) && (
-                <tr><td colSpan={3} style={{opacity:.7}}>Nessun articolo trovato.</td></tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {(detail.items || []).map((it, i) => (
+                  <tr key={i}>
+                    <td>{it.title}</td>
+                    <td className="right">{it.quantity}</td>
+                    <td className="right">{(it.price_cents/100).toFixed(2)}€</td>
+                  </tr>
+                ))}
+                {(!detail.items || detail.items.length === 0) && (
+                  <tr><td colSpan={3} className="muted">Nessun articolo disponibile.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
 
-          <div style={{marginTop:10, display:"flex", gap:8}}>
-            <button className="btn ghost" onClick={()=>window.print()}>Stampa</button>
-            <button className="btn ghost" onClick={()=>setDetail(null)}>Chiudi</button>
+          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+            <button className="btn ghost" onClick={printDetail}>Stampa</button>
+            <button className="btn ghost" onClick={close}>Chiudi</button>
           </div>
         </div>
       )}
