@@ -7,6 +7,7 @@ const router = express.Router()
 /* ================== UTILS ================== */
 function getBearer(req) {
   const h = req.headers.authorization || req.headers.Authorization || ''
+  // accetta "Bearer <token>" o solo "<token>"
   const parts = String(h).trim().split(/\s+/)
   return parts.length === 2 && /^Bearer$/i.test(parts[0]) ? parts[1] : (parts[0] || '')
 }
@@ -125,7 +126,8 @@ router.get('/my-orders', async (req, res) => {
         customer_phone,
         shipping_address,
         shipping_carrier,
-        shipping_tracking,
+        tracking_code,
+        shipping_tracking_url,
         order_items ( product_id, title, quantity, price_cents, image_url )
       `)
       .eq('user_id', userId)
@@ -144,7 +146,8 @@ router.get('/my-orders', async (req, res) => {
       customer_phone: o.customer_phone || null,
       shipping_address: o.shipping_address || null,
       shipping_carrier: o.shipping_carrier || null,
-      shipping_tracking: o.shipping_tracking || null,
+      tracking_code: o.tracking_code || null,
+      shipping_tracking_url: o.shipping_tracking_url || null,
       items: (o.order_items || []).map(i => ({
         product_id: i.product_id,
         title: i.title,
@@ -156,6 +159,7 @@ router.get('/my-orders', async (req, res) => {
 
     res.json(safe)
   } catch (e) {
+    console.error('[GET /my-orders] error:', e)
     res.status(500).json({ error: e.message })
   }
 })
@@ -178,8 +182,9 @@ router.get('/orders/by-session/:sid', async (req, res) => {
         status,
         total_cents,
         discount_code_id,
-        courier,
+        shipping_carrier,
         tracking_code,
+        shipping_tracking_url,
         created_at,
         order_items ( product_id, title, quantity, price_cents, image_url )
       `)
@@ -199,8 +204,9 @@ router.get('/orders/by-session/:sid', async (req, res) => {
       shipping_address: order.shipping_address,
       total_cents: order.total_cents,
       discount_code_id: order.discount_code_id || null,
-      courier: order.courier || null,
+      shipping_carrier: order.shipping_carrier || null,
       tracking_code: order.tracking_code || null,
+      shipping_tracking_url: order.shipping_tracking_url || null,
       items: (order.order_items || []).map(i => ({
         product_id: i.product_id,
         title: i.title,
