@@ -1,15 +1,67 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  
+  <!-- Homepage -->
   <url>
-    <loc>https://djshoprigenerato.eu/</loc>
+    <loc>https://www.djshoprigenerato.eu/</loc>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+  </url>
+
+  <!-- Pagine principali -->
+  <url>
+    <loc>https://www.djshoprigenerato.eu/prodotti</loc>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://djshoprigenerato.eu/prodotti</loc>
-    <changefreq>daily</changefreq>
+    <loc>https://www.djshoprigenerato.eu/chi-siamo</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://www.djshoprigenerato.eu/contatti</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.5</priority>
+  </url>
+
+  <!-- Categorie -->
+  <url>
+    <loc>https://www.djshoprigenerato.eu/categoria/mixer</loc>
+    <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
-  <!-- aggiungi le categorie principali finché non automatizziamo -->
-  <!-- <url><loc>https://djshoprigenerato.eu/categoria/mixer</loc></url> -->
+  <url>
+    <loc>https://www.djshoprigenerato.eu/categoria/console</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://www.djshoprigenerato.eu/categoria/giradischi</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://www.djshoprigenerato.eu/categoria/casse</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <!-- Prodotti di esempio -->
+  <url>
+    <loc>https://www.djshoprigenerato.eu/prodotto/pioneer-xdj-rx3</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://www.djshoprigenerato.eu/prodotto/technics-sl-1210mk7</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://www.djshoprigenerato.eu/prodotto/allen-heath-xone-96</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+
 </urlset>
