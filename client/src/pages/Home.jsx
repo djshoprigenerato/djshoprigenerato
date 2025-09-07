@@ -98,8 +98,8 @@ export default function Home(){
         <meta property="og:title" content="DJ Shop Rigenerato | Attrezzatura DJ rigenerata e garantita" />
         <meta property="og:description" content="Mixer, console, giradischi e casse rigenerati e garantiti. Usato revisionato, testato e pronto per suonare." />
         <meta property="og:url" content="https://djshoprigenerato.eu/" />
-        {/* Inserisci un'anteprima se hai un’immagine: */}
-        {/* <meta property="og:image" content="https://djshoprigenerato.eu/og-cover.jpg" /> */}
+        {/* Inserisci un'anteprima se hai un’immagine:
+        <meta property="og:image" content="https://djshoprigenerato.eu/og-cover.jpg" /> */}
 
         <meta name="twitter:card" content="summary_large_image" />
         <meta name="twitter:title" content="DJ Shop Rigenerato | Attrezzatura DJ rigenerata e garantita" />
@@ -113,7 +113,12 @@ export default function Home(){
 
       {/* HERO */}
       <div className="hero">
-        <div>
+        <div style={{ textAlign: "center" }}>
+          <img
+            src="/djshop.png"
+            alt="DJ Shop Rigenerato - logo"
+            style={{ maxWidth: "220px", width: "100%", height: "auto", marginBottom: 20 }}
+          />
           <h1>DJ Shop Rigenerato – Attrezzatura DJ rigenerata e garantita</h1>
           <p>
             Re-mix, re-fix, re-use: <strong>mixer</strong>, <strong>console</strong>, <strong>giradischi</strong> e
@@ -156,7 +161,7 @@ export default function Home(){
       {cats.length > 0 && (
         <div className="card" style={{marginTop:12}}>
           <strong>Scorciatoie:</strong>{" "}
-          {cats.slice(0,6).map((c, idx) => (
+          {cats.slice(0,6).map((c) => (
             <button
               key={c.id}
               className="btn ghost"
