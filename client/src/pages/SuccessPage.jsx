@@ -4,6 +4,17 @@ import { Link, useSearchParams } from "react-router-dom";
 import axios from "axios";
 import { clearCart } from "../store/cartStore";
 
+function statusLabel(s) {
+  const map = {
+    paid: "Pagato",
+    processing: "In lavorazione",
+    shipped: "Spedito",
+    refunded: "Rimborsato",
+    cancelled: "Annullato",
+  };
+  return map[s] || s || "-";
+}
+
 export default function SuccessPage() {
   const [params] = useSearchParams();
   const sessionId = params.get("session_id") || "";
@@ -18,7 +29,9 @@ export default function SuccessPage() {
 
     async function fetchOrder() {
       try {
-        const { data } = await axios.get(`/api/shop/orders/by-session/${encodeURIComponent(sessionId)}`);
+        const { data } = await axios.get(
+          `/api/shop/orders/by-session/${encodeURIComponent(sessionId)}`
+        );
         setOrder(data);
         setStatus("ready");
 
@@ -69,9 +82,16 @@ export default function SuccessPage() {
       <div className="container">
         <div className="card">
           <h2>Pagamento ricevuto</h2>
-          <p>Non riusciamo a mostrare il riepilogo: ordine non ancora disponibile. Riprova tra qualche secondo.</p>
-          <p>Puoi controllarlo in <Link to="/ordini">i miei ordini</Link>.</p>
-          <Link className="btn" to="/">Torna alla home</Link>
+          <p>
+            Non riusciamo a mostrare il riepilogo: ordine non ancora disponibile.
+            Riprova tra qualche secondo.
+          </p>
+          <p>
+            Puoi controllarlo in <Link to="/ordini">i miei ordini</Link>.
+          </p>
+          <Link className="btn" to="/">
+            Torna alla home
+          </Link>
         </div>
       </div>
     );
@@ -82,27 +102,76 @@ export default function SuccessPage() {
     <div className="container">
       <div className="card">
         <h2>Grazie per il tuo acquisto!</h2>
-        <p>Ordine #{order.id} del {new Date(order.created_at).toLocaleString()}</p>
+        <p>
+          Ordine #{order.id} del {new Date(order.created_at).toLocaleString()} —{" "}
+          <strong>{statusLabel(order.status)}</strong>
+        </p>
 
-        <div style={{marginTop: 12}}>
-          <strong>Intestatario</strong><br/>
-          {order.customer_name || "-"}<br/>
+        <div style={{ marginTop: 12 }}>
+          <strong>Intestatario</strong>
+          <br />
+          {order.customer_name || "-"}
+          <br />
           {order.customer_email || "-"}
         </div>
 
         {order.shipping_address && (
-          <div style={{marginTop: 12}}>
-            <strong>Indirizzo di spedizione</strong><br/>
-            {order.shipping_address.line1 || ""} {order.shipping_address.line2 || ""}<br/>
-            {order.shipping_address.postal_code || ""} {order.shipping_address.city || ""} ({order.shipping_address.state || ""})<br/>
+          <div style={{ marginTop: 12 }}>
+            <strong>Indirizzo di spedizione</strong>
+            <br />
+            {(order.shipping_address.line1 || "") +
+              (order.shipping_address.line2 ? " " + order.shipping_address.line2 : "")}
+            <br />
+            {(order.shipping_address.postal_code || "") +
+              " " +
+              (order.shipping_address.city || "") +
+              (order.shipping_address.state ? " (" + order.shipping_address.state + ")" : "")}
+            <br />
             {order.shipping_address.country || ""}
           </div>
         )}
 
-        <h3 style={{marginTop: 20}}>Articoli</h3>
+        {/* Spedizione / Tracking */}
+        {(order.shipping_carrier || order.tracking_code) && (
+          <div style={{ marginTop: 12 }}>
+            <strong>Spedizione</strong>
+            <div style={{ marginTop: 6 }}>
+              <div>
+                <span style={{ opacity: 0.8 }}>Corriere:</span>{" "}
+                {order.shipping_carrier
+                  ? String(order.shipping_carrier).toUpperCase()
+                  : "-"}
+              </div>
+              <div>
+                <span style={{ opacity: 0.8 }}>Tracking:</span>{" "}
+                {order.tracking_code || "-"}
+                {order.shipping_tracking_url && (
+                  <>
+                    {" "}
+                    •{" "}
+                    <a
+                      href={order.shipping_tracking_url}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Apri tracking
+                    </a>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        <h3 style={{ marginTop: 20 }}>Articoli</h3>
         <table className="table">
           <thead>
-            <tr><th>Prodotto</th><th>Q.tà</th><th>Prezzo</th><th>Subtotale</th></tr>
+            <tr>
+              <th>Prodotto</th>
+              <th>Q.tà</th>
+              <th>Prezzo</th>
+              <th>Subtotale</th>
+            </tr>
           </thead>
           <tbody>
             {(order.items || []).map((it, idx) => {
@@ -120,24 +189,25 @@ export default function SuccessPage() {
           </tbody>
         </table>
 
-        {order.discount && (
-          <p className="badge">
-            Sconto applicato: <strong>{order.discount.code}</strong>{" "}
-            {order.discount.percent_off ? `(-${order.discount.percent_off}%)` : ""}
-            {order.discount.amount_off_cents ? ` (-${(order.discount.amount_off_cents/100).toFixed(2)}€)` : ""}
-          </p>
-        )}
+        {/* lo sconto non è incluso nell'oggetto del recap per sessione,
+            quindi evitiamo di mostrarlo qui */}
 
-        <h2 style={{marginTop: 10}}>Totale: {totalEUR}€</h2>
+        <h2 style={{ marginTop: 10 }}>Totale: {totalEUR}€</h2>
 
-        <div style={{display:'flex', gap:8, marginTop:16}}>
-          <button className="btn ghost" onClick={()=>window.print()}>Stampa</button>
-          <Link className="btn" to="/ordini">I miei ordini</Link>
-          <Link className="btn ghost" to="/">Torna alla home</Link>
+        <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+          <button className="btn ghost" onClick={() => window.print()}>
+            Stampa
+          </button>
+          <Link className="btn" to="/ordini">
+            I miei ordini
+          </Link>
+          <Link className="btn ghost" to="/">
+            Torna alla home
+          </Link>
         </div>
 
-        <p style={{marginTop:12, fontSize:12, opacity:.7}}>
-          Riferimento pagamento: {new URLSearchParams(window.location.search).get('session_id')}
+        <p style={{ marginTop: 12, fontSize: 12, opacity: 0.7 }}>
+          Riferimento pagamento: {new URLSearchParams(window.location.search).get("session_id")}
         </p>
       </div>
     </div>
