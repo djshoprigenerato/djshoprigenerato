@@ -12,10 +12,9 @@ const mailer = nodemailer.createTransport({
   host: process.env.SMTP_HOST,
   port: Number(process.env.SMTP_PORT || 587),
   secure: process.env.SMTP_SECURE === 'true', // true per 465, false per 587
-  auth: (process.env.SMTP_USER && process.env.SMTP_PASS) ? {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS
-  } : undefined
+  auth: (process.env.SMTP_USER && process.env.SMTP_PASS)
+    ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
+    : undefined
 })
 
 // mittente di default
@@ -25,8 +24,12 @@ const DEFAULT_FROM = process.env.SMTP_FROM || 'ordini@djshoprigenerato.eu'
 function buildTrackingUrl(carrier, code) {
   if (!carrier || !code) return null
   const c = String(carrier).toLowerCase()
-  if (c === 'gls') return `https://gls-group.com/IT/it/servizi-online/ricerca-spedizioni/?match=${encodeURIComponent(code)}&type=NAT`
-  if (c === 'sda') return `https://www.poste.it/cerca/index.html#/risultati-spedizioni/${encodeURIComponent(code)}`
+  if (c === 'gls') {
+    return `https://gls-group.com/IT/it/servizi-online/ricerca-spedizioni/?match=${encodeURIComponent(code)}&type=NAT`
+  }
+  if (c === 'sda') {
+    return `https://www.poste.it/cerca/index.html#/risultati-spedizioni/${encodeURIComponent(code)}`
+  }
   return null
 }
 
@@ -38,7 +41,7 @@ router.get('/categories', async (_req, res) => {
   const { data, error } = await supabaseAdmin
     .from('categories')
     .select('*')
-  .order('id')
+    .order('id')
   if (error) return res.status(500).json({ error: error.message })
   res.json(data || [])
 })
@@ -292,7 +295,8 @@ router.get('/orders', async (_req, res) => {
       customer_phone,
       shipping_address,
       shipping_carrier,
-      shipping_tracking,
+      tracking_code,
+      shipping_tracking_url,
       order_items ( title, quantity, price_cents )
     `)
     .order('id', { ascending: false })
@@ -324,7 +328,7 @@ router.put('/orders/:id/shipment', async (req, res) => {
       return res.status(400).json({ error: 'carrier e tracking sono obbligatori' })
     }
     carrier = String(carrier).toLowerCase()
-    if (!['gls','sda'].includes(carrier)) {
+    if (!['gls', 'sda'].includes(carrier)) {
       return res.status(400).json({ error: 'carrier non valido: usa gls o sda' })
     }
 
