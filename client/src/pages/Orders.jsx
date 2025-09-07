@@ -93,18 +93,18 @@ export default function Orders(){
           <p>
             <strong>Corriere:</strong> {detail.shipping_carrier || '-'}<br/>
             <strong>Tracking:</strong>{" "}
-            {detail.shipping_tracking ? (
+            {detail.tracking_code ? (
               <a
                 href={
                   detail.shipping_carrier === 'GLS'
-                    ? `https://gls-group.com/IT/it/servizi-online/ricerca-spedizioni/?match=${encodeURIComponent(detail.shipping_tracking)}&type=NAT`
+                    ? `https://gls-group.com/IT/it/servizi-online/ricerca-spedizioni/?match=${encodeURIComponent(detail.tracking_code)}&type=NAT`
                     : detail.shipping_carrier === 'SDA'
-                      ? `https://www.poste.it/cerca/index.html#/risultati-spedizioni/${encodeURIComponent(detail.shipping_tracking)}`
+                      ? `https://www.poste.it/cerca/index.html#/risultati-spedizioni/${encodeURIComponent(detail.tracking_code)}`
                       : '#'
                 }
                 target="_blank" rel="noreferrer"
               >
-                {detail.shipping_tracking}
+                {detail.tracking_code}
               </a>
             ) : ('-')}
           </p>
