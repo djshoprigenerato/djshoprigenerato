@@ -3,9 +3,6 @@ import express from "express"
 
 const router = express.Router()
 
-// ===== Config =====
-const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || "https://www.djshoprigenerato.eu"
-
 // ===== Utils =====
 const esc = (s = "") =>
   String(s)
@@ -14,12 +11,6 @@ const esc = (s = "") =>
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&apos;")
-
-const abs = (path = "") => {
-  if (!path) return PUBLIC_BASE_URL + "/"
-  if (/^https?:\/\//i.test(path)) return path
-  return `${PUBLIC_BASE_URL}${path.startsWith("/") ? "" : "/"}${path}`
-}
 
 const slugify = (str = "") =>
   str
@@ -30,15 +21,22 @@ const slugify = (str = "") =>
     .replace(/^-+|-+$/g, "")
     .slice(0, 80)
 
-// ===== Cache in memoria =====
-const CACHE_TTL_MS = 10 * 60 * 1000 // 10 minuti
+// Cache in memoria (10 min)
+const CACHE_TTL_MS = 10 * 60 * 1000
 let cacheXml = null
 let cacheTime = 0
 
-// ===== Fetch helper (senza axios) =====
-const getJson = async (url) => {
+// Fetch helper con timeout e base dinamica
+const getJson = async (base, path) => {
   try {
-    const r = await fetch(url, { headers: { accept: "application/json" } })
+    const url = new URL(path, base).toString()
+    const ac = new AbortController()
+    const t = setTimeout(() => ac.abort(), 8000) // 8s timeout
+    const r = await fetch(url, {
+      headers: { accept: "application/json", "user-agent": "djshop-sitemap/1.0" },
+      signal: ac.signal
+    })
+    clearTimeout(t)
     if (!r.ok) return []
     return await r.json()
   } catch {
@@ -46,16 +44,23 @@ const getJson = async (url) => {
   }
 }
 
-// ===== /sitemap.xml =====
-router.get("/sitemap.xml", async (_req, res) => {
+// /sitemap.xml
+router.get("/sitemap.xml", async (req, res) => {
   try {
-    // Cache
+    // Se cache fresca, servila
     const now = Date.now()
     if (cacheXml && now - cacheTime < CACHE_TTL_MS) {
       res.set("Content-Type", "application/xml")
       res.set("Cache-Control", "public, max-age=600")
       return res.send(cacheXml)
     }
+
+    // Base URL dal contesto della richiesta (evita problemi DNS/SSL/loop)
+    const proto = (req.headers["x-forwarded-proto"] || req.protocol || "https").split(",")[0].trim()
+    const host = req.headers["x-forwarded-host"] || req.headers.host
+    const BASE = `${proto}://${host}`
+
+    const abs = (p = "/") => new URL(p, BASE).toString()
 
     // URL statici
     const urls = [
@@ -65,9 +70,9 @@ router.get("/sitemap.xml", async (_req, res) => {
       { loc: abs("/contatti"), changefreq: "monthly", priority: "0.5" }
     ]
 
-    // API pubbliche (adatta se i tuoi endpoint differiscono)
-    const cats = await getJson(abs("/api/shop/categories"))
-    const prods = await getJson(abs("/api/shop/products?limit=2000"))
+    // Dati da API interne (no auth)
+    const cats = await getJson(BASE, "/api/shop/categories")
+    const prods = await getJson(BASE, "/api/shop/products?limit=2000")
 
     // Categorie
     ;(cats || []).forEach((c) => {
@@ -80,14 +85,18 @@ router.get("/sitemap.xml", async (_req, res) => {
       })
     })
 
-    // Prodotti con immagini
+    // Prodotti (con immagini)
     const productXml = (p) => {
       const pSlug = p.slug || slugify(p.name || p.id)
       const loc = abs(`/prodotto/${pSlug}`)
       const lastmod = p.updated_at || p.created_at
       const images = []
-      if (p.coverUrl) images.push(abs(p.coverUrl))
-      if (Array.isArray(p.images)) p.images.forEach((u) => u && images.push(abs(u)))
+      const norm = (u) => {
+        if (!u) return null
+        try { return new URL(u, BASE).toString() } catch { return null }
+      }
+      if (p.coverUrl) { const n = norm(p.coverUrl); if (n) images.push(n) }
+      if (Array.isArray(p.images)) p.images.forEach((u) => { const n = norm(u); if (n) images.push(n) })
 
       return [
         `<url>`,
@@ -128,6 +137,12 @@ router.get("/sitemap.xml", async (_req, res) => {
     res.set("Cache-Control", "public, max-age=600")
     return res.send(xml)
   } catch {
+    // Fallback minimal sempre valido
+    const proto = (req.headers["x-forwarded-proto"] || req.protocol || "https").split(",")[0].trim()
+    const host = req.headers["x-forwarded-host"] || req.headers.host
+    const BASE = `${proto}://${host}`
+    const abs = (p = "/") => new URL(p, BASE).toString()
+
     const fallback = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url><loc>${esc(abs("/"))}</loc></url>
@@ -138,7 +153,12 @@ router.get("/sitemap.xml", async (_req, res) => {
 })
 
 // (Opzionale) robots.txt dinamico
-router.get("/robots.txt", (_req, res) => {
+router.get("/robots.txt", (req, res) => {
+  const proto = (req.headers["x-forwarded-proto"] || req.protocol || "https").split(",")[0].trim()
+  const host = req.headers["x-forwarded-host"] || req.headers.host
+  const BASE = `${proto}://${host}`
+  const abs = (p = "/") => new URL(p, BASE).toString()
+
   const body = [
     "User-agent: *",
     "Allow: /",
