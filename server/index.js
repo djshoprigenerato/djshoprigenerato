@@ -7,6 +7,7 @@ import cors from 'cors'
 import adminRoutes from './routes/admin.js'
 import shopRoutes from './routes/shop.js'
 import stripeRoutes from './routes/stripe.js'
+import sitemapRouter from './routes/sitemap.js' // ⬅️ AGGIUNTO
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -39,6 +40,10 @@ app.use('/api/shop', shopRoutes)
 
 // Healthcheck semplice
 app.get('/api/health', (_req, res) => res.json({ ok: true }))
+
+// --- SEO: sitemap.xml (+ robots.txt se attivato nella route) ---
+// Monta le route dinamiche PRIMA delle statiche e del catch-all
+app.use('/', sitemapRouter) // ⬅️ AGGIUNTO
 
 // --- Static client build ---
 const clientBuildPath = path.join(__dirname, '../client/dist')
