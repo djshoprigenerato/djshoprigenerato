@@ -1,5 +1,5 @@
 // client/src/pages/Orders.jsx
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import axios from "axios";
 import { supabase } from "../supabaseClient";
 
@@ -25,7 +25,6 @@ function AddressBlock({ addr }){
   );
 }
 
-// costruisce l'URL ufficiale del tracking se possibile
 function buildTrackingUrl(carrier, code){
   if(!carrier || !code) return null;
   const c = String(carrier).toLowerCase();
@@ -34,7 +33,7 @@ function buildTrackingUrl(carrier, code){
   return null;
 }
 
-// compat layer per nomi di campi diversi
+// compat: supporta più nomi di campo
 function getCarrier(o){ return o?.shipping_carrier || o?.courier || o?.carrier || null; }
 function getTrackingCode(o){ return o?.tracking_code || o?.shipping_tracking || o?.tracking || null; }
 function getTrackingUrl(o){
@@ -44,7 +43,9 @@ function getTrackingUrl(o){
 export default function OrdersPage(){
   const [orders, setOrders] = useState([]);
   const [detail, setDetail] = useState(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
 
+  // carica lista ordini (con eventuali items se presenti)
   useEffect(() => {
     (async () => {
       try{
@@ -59,6 +60,26 @@ export default function OrdersPage(){
       }
     })();
   }, []);
+
+  // apre dettaglio; se mancano articoli, ricarica quell’ordine dalla fonte
+  const openDetail = async (o) => {
+    const hasItems = (o?.items && o.items.length) || (o?.order_items && o.order_items.length);
+    if (hasItems) { setDetail(o); return; }
+    try{
+      setLoadingDetail(true);
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      const cfg = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
+      const { data } = await axios.get("/api/shop/my-orders", cfg);
+      const full = (data||[]).find(x => x.id === o.id);
+      setDetail(full || o); // fallback a o
+    }catch(e){
+      console.error("Errore apertura dettaglio:", e);
+      setDetail(o);
+    }finally{
+      setLoadingDetail(false);
+    }
+  };
 
   return (
     <div className="container">
@@ -83,7 +104,7 @@ export default function OrdersPage(){
                   <td>{new Date(o.created_at).toLocaleString()}</td>
                   <td>{statusLabel(o.status)}</td>
                   <td>{(o.total_cents/100).toFixed(2)}€</td>
-                  <td><button className="btn ghost" onClick={()=>setDetail(o)}>Dettagli</button></td>
+                  <td><button className="btn ghost" onClick={()=>openDetail(o)}>Dettagli</button></td>
                 </tr>
               ))}
             </tbody>
@@ -93,7 +114,10 @@ export default function OrdersPage(){
 
       {detail && (
         <div className="card" style={{marginTop:16}}>
-          <h3>Dettaglio ordine #{detail.id}</h3>
+          <div style={{display:"flex", justifyContent:"space-between", alignItems:"center"}}>
+            <h3 style={{margin:0}}>Dettaglio ordine #{detail.id}</h3>
+            {loadingDetail && <span style={{opacity:.7, fontSize:12}}>caricamento…</span>}
+          </div>
 
           <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:16}}>
             <div>
@@ -129,13 +153,16 @@ export default function OrdersPage(){
           <table className="table">
             <thead><tr><th>Articolo</th><th>Q.tà</th><th>Prezzo</th></tr></thead>
             <tbody>
-              {(detail.items || detail.order_items || []).map((it, idx) => (
+              {((detail.items && detail.items.length ? detail.items : detail.order_items) || []).map((it, idx) => (
                 <tr key={idx}>
                   <td>{it.title}</td>
                   <td>{it.quantity}</td>
                   <td>{(it.price_cents/100).toFixed(2)}€</td>
                 </tr>
               ))}
+              {(!detail.items || detail.items.length === 0) && (!detail.order_items || detail.order_items.length === 0) && (
+                <tr><td colSpan={3} style={{opacity:.7}}>Nessun articolo trovato.</td></tr>
+              )}
             </tbody>
           </table>
 
