@@ -27,6 +27,23 @@ app.use(
   })
 )
 
+// --- Endpoint keep-alive ultra-leggero (no-cache, 204) ---
+// Usa un token in query per evitare abusi: aggiungi KEEPALIVE_TOKEN all'env su Render.
+// Esempio di chiamata: /_keepalive?t=<TOKEN>&ts=<timestamp>
+app.get('/_keepalive', (req, res) => {
+  const required = process.env.KEEPALIVE_TOKEN
+  const provided = req.query.t
+  if (required && provided !== required) {
+    return res.status(401).end()
+  }
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+  res.set('Pragma', 'no-cache')
+  res.set('Expires', '0')
+  // Log minimale opzionale (commenta se non ti serve)
+  // console.log(`[KEEPALIVE] ${new Date().toISOString()}`)
+  return res.status(204).end()
+})
+
 // --- Stripe routes (devono stare PRIMA del JSON parser) ---
 // All'interno di stripeRoutes il webhook usa express.raw(...)
 app.use('/api', stripeRoutes)
