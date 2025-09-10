@@ -210,7 +210,7 @@ export default function Home(){
         </details>
         <details>
           <summary><strong>Posso permutare il mio usato?</strong></summary>
-          <p>Sì, contattaci per una valutazione e proposta di permuta.</p>
+          <p>Sì, contattaci via email a info@djshoprigenerato.eu per una valutazione e proposta di permuta.</p>
         </details>
       </section>
     </div>
