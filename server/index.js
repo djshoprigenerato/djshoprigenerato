@@ -34,14 +34,14 @@ app.get('/_keepalive', (req, res) => {
   const required = process.env.KEEPALIVE_TOKEN
   const provided = req.query.t
   if (required && provided !== required) {
-    return res.status(401).end()
+    return res.status(401).type('text/plain').send('unauthorized')
   }
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
   res.set('Pragma', 'no-cache')
   res.set('Expires', '0')
-  // Log minimale opzionale (commenta se non ti serve)
+  // log opzionale:
   // console.log(`[KEEPALIVE] ${new Date().toISOString()}`)
-  return res.status(204).end()
+  return res.status(200).type('text/plain').send('ok')
 })
 
 // --- Stripe routes (devono stare PRIMA del JSON parser) ---
