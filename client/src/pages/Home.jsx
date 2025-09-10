@@ -202,7 +202,7 @@ export default function Home(){
         </details>
         <details>
           <summary><strong>Quanto dura la garanzia sui prodotti rigenerati?</strong></summary>
-          <p>La durata è indicata in scheda prodotto. In caso di problemi, assistenza e sostituzione secondo condizioni.</p>
+          <p>La durata è di 12 mesi. In caso di problemi, assistenza e sostituzione secondo condizioni.</p>
         </details>
         <details>
           <summary><strong>L’attrezzatura rigenerata è adatta a DJ professionisti?</strong></summary>
